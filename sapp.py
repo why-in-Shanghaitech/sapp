@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 from other import *
+from gpustat import get_card_list
 import os, sys, json
 
 class Sapp():
@@ -43,30 +44,38 @@ class Sapp():
         def get_title(title):
             return '# Current command:\n#\n#    $ ' + ' '.join(args) + ' ...\n#\n' + title
 
+        card_list = get_card_list()
+
         # Step 1: queue (-p)
-        title = 'Step 1/4: Please select the queue you want to use:'
-        options = ['debug', 'critical', 'normal']
-        option, _ = pick(options, get_title(title), indicator='=>')
-        args.extend(['-p', option])
+        title = 'Step 1/5: Please select the queue you want to use:'
+        options = [(k, str(sum(v.values()))) for k, v in card_list.items()]
+        option, _ = pick(options, get_title(title), indicator='=>', options_map_func=lambda x: f"{x[0]} (Avail: {x[1]})")
+        args.extend(['-p', option[0]])
 
         # Step 2: GPU type (--gres)
-        title = 'Step 2/4: Please select the type of GPUs:'
-        options = ['Any type', 'NVIDIAA40', 'NVIDIAGeForceRTX2080Ti', 'NVIDIATITANRTX', 'TeslaV100-PCIE-16GB', 'NVIDIATITANXp', 'NVIDIAGeForceGTX1080', 'NVIDIATITANV', 'TeslaM4024GB', 'NVIDIATITANXPascal)']
-        gpu, _ = pick(options, get_title(title), indicator='=>')
-        gpu = 'gpu' if gpu == 'Any type' else 'gpu:' + gpu
+        title = 'Step 2/5: Please select the type of GPUs:'
+        options = [('Any type', str(sum(card_list[option[0]].values())))] + [(k, str(v)) for k, v in card_list[option[0]].items()]
+        gpu, _ = pick(options, get_title(title), indicator='=>', options_map_func=lambda x: f"{x[0]} (Avail: {x[1]})")
+        avail = gpu[1]
+        gpu = 'gpu' if gpu[0] == 'Any type' else 'gpu:' + gpu[0]
 
         # Step 3: # of GPUs (--gres)
-        title = 'Step 3/4: Please select the number of GPUs you need:'
+        title = f'Step 3/5: Please select the number of GPUs you need (Avail: {avail}):'
         options = ['1', '2', '4', '8']
         num, _ = opick(options, get_title(title), indicator='=>', verify='number')
         if not num: num = '1'
         args.extend([f'--gres={gpu}:{num}'])
 
         # Step 4: time (--time)
-        title = 'Step 4/4: Please input the time require to finish the job (in minutes):'
+        title = 'Step 4/5: Please input the time require to finish the job (in minutes):'
         answer = fill(get_title(title), verify='number')
         if not answer: answer = '60'
         args.extend([f'--time={answer}'])
+
+        # Step 5: confirm
+        title = 'Step 5/5: Please confirm your cammand:'
+        answer, idx = pick(["Yes, submit it.", "No, exit and I'll make some changes."], get_title(title), indicator='=>', default_index=1)
+        if idx != 0: exit(0)
 
         return args
 
