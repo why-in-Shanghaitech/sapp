@@ -12,22 +12,14 @@ def run_cammand(cmd, retry = 1):
 def parse_gres_line(line):
     """Parse the gresused line."""
     line = line.strip()
-    m = re.match(r'gpu\:([\w\-\(\)]+)\:(\d+)\(IDX\:([\d\-\,N/A]+)\)', line)
+    m = re.match(r'([\w\*]+)\s*gpu\:([\w\-\(\)]+)\:(\d+)\s*gpu\:(?:[\w\-\(\)]+)\:(\d+)\(IDX\:([\d\-\,N/A]+)\)', line)
     if not m: return None
 
-    gpu = m.group(1)
-    used = int(m.group(2))
-    
-    ## available gpus
-    s = m.group(3).strip()
-    avail = 0
-    if s != 'N/A':
-        for period in s.split(','):
-            if '-' not in period:
-                avail += 1
-            else:
-                start, end = period.split('-')
-                avail += int(end) - int(start) + 1
+    status = m.group(1)
+    if status not in ['idle', 'mix', 'alloc']: return None
+    gpu = m.group(2)
+    avail = int(m.group(3))
+    used = int(m.group(4))
 
     return gpu, avail - used
 
@@ -57,7 +49,7 @@ def get_card_list():
     resources = {}
     for partition in partitions:
         part_status = defaultdict(int)
-        response = run_cammand(['sinfo', '-O', 'GresUsed:.50', '-p', partition])
+        response = run_cammand(['sinfo', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition])
         for line in response.split('\n'):
             parse = parse_gres_line(line)
             if parse is not None:
