@@ -47,33 +47,39 @@ class Sapp():
         card_list = get_card_list()
 
         # Step 1: queue (-p)
-        title = 'Step 1/5: Please select the queue you want to use:'
+        title = 'Step 1/6: Please select the queue you want to use:'
         options = [(k, str(sum(v.values()))) for k, v in card_list.items()]
         option, _ = pick(options, get_title(title), indicator='=>', options_map_func=lambda x: f"{x[0]} (Avail: {x[1]})")
         args.extend(['-p', option[0]])
 
         # Step 2: GPU type (--gres)
-        title = 'Step 2/5: Please select the type of GPUs:'
+        title = 'Step 2/6: Please select the type of GPUs:'
         options = [('Any type', str(sum(card_list[option[0]].values())))] + [(k, str(v)) for k, v in card_list[option[0]].items()]
         gpu, _ = pick(options, get_title(title), indicator='=>', options_map_func=lambda x: f"{x[0]} (Avail: {x[1]})")
         avail = gpu[1]
         gpu = 'gpu' if gpu[0] == 'Any type' else 'gpu:' + gpu[0]
 
         # Step 3: # of GPUs (--gres)
-        title = f'Step 3/5: Please select the number of GPUs you need (Avail: {avail}):'
+        title = f'Step 3/6: Please select the number of GPUs you need (Avail: {avail}):'
         options = ['1', '2', '4', '8']
         num, _ = opick(options, get_title(title), indicator='=>', verify='number')
         if not num: num = '1'
-        args.extend([f'--gres={gpu}:{num}'])
+        args.extend([f"'--gres={gpu}:{num}'"])
 
-        # Step 4: time (--time)
-        title = 'Step 4/5: Please input the time require to finish the job (in minutes):'
+        # Step 4: # of CPUs (--cpus-per-task)
+        title = f'Step 4/6: Please select the number of CPUs you need:'
+        options = ['Default', '1', '2', '4', '6']
+        num, _ = opick(options, get_title(title), indicator='=>', verify='number')
+        if num != 'Default': args.extend([f'--cpus-per-task={num}'])
+
+        # Step 5: time (--time)
+        title = 'Step 5/6: Please input the time require to finish the job (in minutes):'
         answer = fill(get_title(title), verify='number')
         if not answer: answer = '60'
         args.extend([f'--time={answer}'])
 
-        # Step 5: confirm
-        title = 'Step 5/5: Please confirm your cammand:'
+        # Step 6: confirm
+        title = 'Step 6/6: Please confirm your cammand:'
         answer, idx = pick(["Yes, submit it.", "No, exit and I'll make some changes."], get_title(title), indicator='=>', default_index=1)
         if idx != 0: exit(0)
 
