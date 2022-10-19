@@ -85,7 +85,41 @@ class Sapp():
 
         return args
 
+    @staticmethod
+    def set_screen_shape():
+        """
+        Tqdm might fail on detecting screen shape. Pass the screen shape to the environment variables.
+        """
+
+        def _screen_shape_linux(fp):  # pragma: no cover
+
+            try:
+                from array import array
+                from fcntl import ioctl
+                from termios import TIOCGWINSZ
+            except ImportError:
+                return None, None
+            else:
+                try:
+                    rows, cols = array('h', ioctl(fp, TIOCGWINSZ, '\0' * 8))[:2]
+                    return cols, rows
+                except Exception:
+                    try:
+                        return [int(os.environ[i]) - 1 for i in ("COLUMNS", "LINES")]
+                    except (KeyError, ValueError):
+                        return None, None
+
+        cols, rows = _screen_shape_linux(sys.stderr)
+        
+        # Do not overwrite user environment
+        if isinstance(cols, int):
+            os.environ.setdefault("COLUMNS", str(cols + 1))
+
+        if isinstance(rows, int):
+            os.environ.setdefault("LINES", str(rows + 1))
+
 if __name__ == '__main__':
     sapp = Sapp()
     args = sapp.get_args()
+    Sapp.set_screen_shape()
     os.system(' '.join(args + sys.argv[1:]))
