@@ -39,7 +39,7 @@ class Sapp():
 
     def make_config(self):
 
-        args = ['srun', '-N', '1', '-X']
+        args = ['srun', '-N', '1', '--ntasks-per-node=1', '-X', '-u']
 
         def get_title(title):
             return '# Current command:\n#\n#    $ ' + ' '.join(args) + ' ...\n#\n' + title
