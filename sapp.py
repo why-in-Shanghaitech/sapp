@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 from other import *
 from gpustat import get_card_list
+from collections import OrderedDict
 import os, sys, json
 
 class Sapp():
@@ -10,30 +11,37 @@ class Sapp():
     def read_config(self):
         if os.path.exists(self.path):
             with open(self.path, 'r') as f:
-                config = json.loads(f.read())
+                config = json.loads(f.read(), object_pairs_hook=OrderedDict)
         else:
             config = {}
         return config
 
     def save_config(self, config):
         with open(self.path, 'w') as f:
-            print(json.dumps(config), file=f)
+            print(json.dumps(config, indent=2), file=f)
         
     def get_args(self):
 
         config = self.read_config()
-        options = list(config.keys())
+
+        max_length = max(map(len, config.keys()))
+        options = [(k, f"{k}{' '*(max_length + 2 - len(k))}({' '.join(v)})") for k, v in config.items()]
 
         # Step 0: name
         title = 'Welcome to use sapp! Please select the name of the config:'
-        name, _ = opick(options, title, hint='Create new config', default='temp', indicator='=>')
+        name, _ = opick(options, title, hint='Create new config', default='temp', indicator='=>', options_map_func=lambda x: x if isinstance(x, str) else x[1])
 
-        if name in config:
-            args = config[name]
-        else:
+        if isinstance(name, str):
             args = self.make_config()
-            config[name] = args
-            if name != 'temp': self.save_config(config)
+            if name != 'temp': 
+                config[name] = args
+        else:
+            name = name[0]
+            args = config[name]
+
+        config["LAST-RUN"] = args
+        config.move_to_end("LAST-RUN", last=False)
+        self.save_config(config)
         
         return args
 

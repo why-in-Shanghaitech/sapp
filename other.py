@@ -47,7 +47,7 @@ def opick(options, *args, hint='Others', default='', verify='any', **kwargs):
     
     option, index = picker.start()
 
-    if option.startswith(hint + ': '):
+    if isinstance(option, str) and option.startswith(hint + ': '):
         option = option[len(hint + ': '):]
 
     return option, index
