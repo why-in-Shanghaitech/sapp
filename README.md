@@ -17,7 +17,7 @@ If you want to execute commands other that `python`, just add `sapp` in front of
 ## Install
 
 ```sh
-pip install sapp-0.3.1-py3-none-any.whl
+pip install https://github.com/why-in-Shanghaitech/sapp/releases/download/v0.3.1/sapp-0.3.1-py3-none-any.whl
 ```
 
 ## Uninstall
