@@ -1,2 +1,5 @@
 __pycache__
 .bashrc
+build
+dist
+*.egg-info

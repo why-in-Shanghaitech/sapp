@@ -1,5 +1,5 @@
 import curses
-from pick import Picker, pick
+from .pick import Picker, pick
 
 __all__ = ['pick', 'opick', 'fill']
 

@@ -1,6 +1,6 @@
 #! /usr/bin/env python
-from other import *
-from gpustat import get_card_list
+from .other import *
+from .gpustat import get_card_list
 from collections import OrderedDict
 import os, sys, json
 
@@ -126,8 +126,24 @@ class Sapp():
         if isinstance(rows, int):
             os.environ.setdefault("LINES", str(rows + 1))
 
-if __name__ == '__main__':
+def main():
     sapp = Sapp()
     args = sapp.get_args()
     Sapp.set_screen_shape()
     os.system(' '.join(args + sys.argv[1:]))
+
+def spython():
+    sapp = Sapp()
+    args = sapp.get_args()
+    Sapp.set_screen_shape()
+    os.system(' '.join(args + ['python'] + sys.argv[1:]))
+
+def spython3():
+    sapp = Sapp()
+    args = sapp.get_args()
+    Sapp.set_screen_shape()
+    os.system(' '.join(args + ['python3'] + sys.argv[1:]))
+
+
+if __name__ == '__main__':
+    main()
