@@ -1,4 +1,5 @@
-# coding: utf-8
+# Copyright (c) Haoyi Wu.
+# Licensed under the MIT license.
  
 from setuptools import setup, find_packages
  

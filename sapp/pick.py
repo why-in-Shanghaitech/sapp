@@ -1,3 +1,11 @@
+# Copyright (c) Haoyi Wu.
+# Licensed under the MIT license.
+#
+# This file contains code adapted from pick (https://github.com/wong2/pick)
+# Copyright (c) 2016 Wang Dàpéng
+# Licensed under the MIT License
+# https://github.com/wong2/pick/blob/master/LICENSE
+
 import curses
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Dict

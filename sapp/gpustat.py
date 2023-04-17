@@ -1,3 +1,6 @@
+# Copyright (c) Haoyi Wu.
+# Licensed under the MIT license.
+
 from collections import defaultdict
 import subprocess
 import re

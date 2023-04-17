@@ -1,4 +1,8 @@
 #! /usr/bin/env python
+#
+# Copyright (c) Haoyi Wu.
+# Licensed under the MIT license.
+
 from .other import *
 from .gpustat import get_card_list
 from collections import OrderedDict

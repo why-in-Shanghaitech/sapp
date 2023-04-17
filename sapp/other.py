@@ -1,3 +1,6 @@
+# Copyright (c) Haoyi Wu.
+# Licensed under the MIT license.
+
 import curses
 from .pick import Picker, pick
 
