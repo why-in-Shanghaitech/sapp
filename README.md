@@ -33,5 +33,6 @@ It just adds the command line arguments for `srun`. Personally I do not like typ
 The GPU status query is based on command `sinfo`.
 
 > **Warning**
+> 
 > This tool is only tested in Shanghaitech SIST Cluster. It may not suit for all slurm systems.
 
