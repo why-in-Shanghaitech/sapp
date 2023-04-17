@@ -32,6 +32,6 @@ It just adds the command line arguments for `srun`. Personally I do not like typ
 
 The GPU status query is based on command `sinfo`.
 
-<div style="padding: 15px; margin-bottom: 20px; border: 1px solid transparent; border-radius: 4px;  color: #8a6d3b; background-color: #fcf8e3; border-color: #faebcc;">
-    <strong>Warning</strong>: This tool is only tested in Shanghaitech SIST Cluster. It may not suit for all slurm systems.
-</div>
+> **Warning**
+> This tool is only tested in Shanghaitech SIST Cluster. It may not suit for all slurm systems.
+
