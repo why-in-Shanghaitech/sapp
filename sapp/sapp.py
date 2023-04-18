@@ -17,7 +17,7 @@ class Sapp():
             with open(self.path, 'r') as f:
                 config = json.loads(f.read(), object_pairs_hook=OrderedDict)
         else:
-            config = {}
+            config = OrderedDict()
         return config
 
     def save_config(self, config):
@@ -28,7 +28,7 @@ class Sapp():
 
         config = self.read_config()
 
-        max_length = max(map(len, config.keys()))
+        max_length = max(map(len, config.keys()), default=0)
         options = [(k, f"{k}{' '*(max_length + 2 - len(k))}({' '.join(v)})") for k, v in config.items()]
 
         # Step 0: name
