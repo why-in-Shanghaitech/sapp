@@ -42,7 +42,10 @@ class MenuForm(npyscreen.FormBaseNew):
         if self.field.value[0] == 1:
             self.parentApp.setNextForm('select_config')
         elif self.field.value[0] == 2:
-            self.parentApp.getForm('new_config').update(None, "Create a new slurm config.")
+            greetings = "Create a new slurm config."
+            if not self.parentApp.database.recent:
+                greetings = "Welcome to SAPP! To use SAPP for the first time, please create a slurm setting."
+            self.parentApp.getForm('new_config').update(None, greetings)
             self.parentApp.setNextForm('new_config')
         elif self.field.value[0] == 3:
             self.parentApp.getForm('new_config').update(None, "Create a new slurm config for one-time execution.", True)
@@ -73,7 +76,7 @@ class MenuForm(npyscreen.FormBaseNew):
         self.field = self.add(MuteTitleSelectOne, scroll_exit=True, select_exit=True, max_height=height, name="MENU", values = [v for v, _ in self.options])
 
         if not self.parentApp.database.recent:
-            self.field.value = [3]
+            self.field.value = [2]
 
 
 class RoundCheckBox(npyscreen.RoundCheckBox):

@@ -4,11 +4,11 @@
 from typing import List, Optional, Union
 from dataclasses import dataclass, field
 from pathlib import Path
-import subprocess
-import shlex
-import json
+import shlex, shutil
 import os, sys
+import json
 from datetime import datetime
+import warnings
 
 
 SAPP_FOLDER = "~/.config/sapp"
@@ -146,7 +146,9 @@ class Database:
         else:
             data = {
                 # sapp global config
-                "config": {},
+                "config": {
+                    "log_space": 100
+                },
 
                 # user settings
                 "settings": [],
@@ -161,6 +163,15 @@ class Database:
         self.recent: SubmitConfig = None
         if data.get("recent", None):
             self.recent = SubmitConfig(SlurmConfig(**data["recent"].pop("slurm_config", {})), **data["recent"])
+
+        # clean databse
+        log_space = self.config.get("log_space", 100)
+        candidates = [p for p in self.base_path.iterdir() if p.is_dir()]
+        if log_space > 0 and len(candidates) > log_space: # remove old folders
+            to_remove = sorted(candidates)[:-log_space]
+            for d in to_remove:
+                shutil.rmtree(d, ignore_errors=True)
+
 
     def dump(self):
         data = {
@@ -184,23 +195,42 @@ class Database:
         self.recent = config
         self.dump() # dump befure execution
 
+        def resolve_files(command: List[str]):
+            """make a copy for all small (<1M) files mentioned in the command."""
+            shell_folder = self.base_path / self.identifier / "data"
+            shell_folder.mkdir(parents=True, exist_ok=True)
+
+            _command = []
+            for arg in command:
+                if os.path.isfile(arg) and os.path.getsize(arg) < 1 * 1024 * 1024:
+
+                    # copy to SAPP space
+                    try:
+                        arg = shutil.copy(arg, shell_folder)
+                    except IOError as e:
+                        warnings.warn(f"Fails to copy files in command line: {arg}. You might need to keep this file untouched till the job starts running.", UserWarning)
+                    
+                _command.append(arg)
+            return _command
+
         # do execution
         if config.task in (0, 2): # execute srun
             args = utils.get_command(config, tp = "srun")
-            args += command
 
             if config.task == 0:
+                args += resolve_files(command)
                 utils.set_screen_shape()
                 os.system(shlex.join(args))
-                # subprocess.run(args, shell=False) # do not raise error for KeyboardInterrupt
+                # subprocess.run(args, shell=False) # will raise error when KeyboardInterrupt
             elif config.task == 2:
+                args += command
                 print(" ".join(args))
         elif config.task in (1, 3): # execute sbatch
             args = utils.get_command(config, tp = "sbatch")
             args += [""]
-            args += [shlex.join(command)]
 
             if config.task == 1:
+                args += [shlex.join(resolve_files(command))]
                 # write the shell script
                 shell_folder = self.base_path / self.identifier
                 shell_folder.mkdir(parents=True, exist_ok=True)
@@ -212,6 +242,7 @@ class Database:
 
                 os.system(shlex.join(["sbatch", str(shell_path)]))
             elif config.task == 3:
+                args += [shlex.join(command)]
                 print("\n".join(args))
 
         
