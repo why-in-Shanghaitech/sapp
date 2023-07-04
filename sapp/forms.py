@@ -182,7 +182,7 @@ class SlurmConfigForm(FormMultiPageAction):
         self.freeze_name = False
         self.greetings = "<greetings>"
 
-        self.card_list = get_card_list()
+        self.card_list = parentApp.card_list
         self.partitions = list(self.card_list.keys())
         self.cards = {p: list(self.card_list[p].keys()) for p in self.partitions}
 
@@ -280,11 +280,20 @@ class SlurmConfigForm(FormMultiPageAction):
 class SelectConfigForm(npyscreen.ActionFormV2):
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
+        card_list = parentApp.card_list
+        def avail_of(config: SlurmConfig) -> int:
+            partition = config.partition
+            gpu_type = config.gpu_type
+            if gpu_type == 'Any Type':
+                return sum(card_list.get(partition, {}).values())
+            else:
+                return card_list.get(partition, {}).get(gpu_type, 0)
+
         self.options = [
-            (s.name, f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
+            (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
         ]
         if parentApp.database.recent:
-            self.options.insert(0, ("RECENT", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+            self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
@@ -321,11 +330,20 @@ class SelectConfigForm(npyscreen.ActionFormV2):
 class EditRunConfigForm(npyscreen.ActionFormV2):
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
+        card_list = parentApp.card_list
+        def avail_of(config: SlurmConfig) -> int:
+            partition = config.partition
+            gpu_type = config.gpu_type
+            if gpu_type == 'Any Type':
+                return sum(card_list.get(partition, {}).values())
+            else:
+                return card_list.get(partition, {}).get(gpu_type, 0)
+        
         self.options = [
-            (s.name, f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
+            (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
         ]
         if parentApp.database.recent:
-            self.options.insert(0, ("RECENT", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+            self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
@@ -447,6 +465,7 @@ class SubmitForm(FormMultiPageAction):
 class SlurmApplication(npyscreen.NPSAppManaged):
     def __init__(self, command):
         self.command = command
+        self.card_list = get_card_list()
         self.database = Database()
         super().__init__()
     
