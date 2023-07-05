@@ -456,6 +456,7 @@ class Clash:
         """
         self.exec_folder = Path(self.EXEC_FOLDER).expanduser()
         self.use_custom = use_custom
+        self.executable # auto download first
 
     @property
     def executable(self) -> Path:
