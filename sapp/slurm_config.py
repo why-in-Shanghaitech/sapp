@@ -468,6 +468,7 @@ class Clash:
 
         if not exec_path.exists(): # download and cache
 
+            print("Preparing web environment. Please wait, it could take a few minutes...")
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
             # TODO: auto download the latest version
