@@ -1,17 +1,22 @@
 # Copyright (c) Haoyi Wu.
 # Licensed under the MIT license.
 
-from typing import List, Optional, Union
+from typing import List, Tuple, Optional, Union
 from dataclasses import dataclass, field
 from pathlib import Path
 import shlex, shutil
-import os, sys
+import os, sys, subprocess
 import json
 from datetime import datetime
 import warnings
+import requests
+import socket
+import gzip, tempfile
+from tqdm import tqdm
+from filelock import FileLock
+from bindport import FreePort
+import random
 
-
-SAPP_FOLDER = "~/.config/sapp"
 
 @dataclass
 class SlurmConfig:
@@ -94,6 +99,12 @@ class SubmitConfig:
             "help": "(Optional) Job name for slurm. Will appear in squeue."
         }
     )
+    clash: int = field(
+        default="0-01:00:00",
+        metadata={
+            "help": "Limit on the total run time of the job allocation. E.g. 0-01:00:00"
+        }
+    )
     time: str = field(
         default="0-01:00:00",
         metadata={
@@ -124,8 +135,11 @@ class SubmitConfig:
 
 
 class Database:
+
+    SAPP_FOLDER = "~/.config/sapp"
+
     def __init__(self) -> None:
-        self.base_path = Path(SAPP_FOLDER).expanduser()
+        self.base_path = Path(self.SAPP_FOLDER).expanduser()
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.identifier = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
@@ -147,7 +161,7 @@ class Database:
             data = {
                 # sapp global config
                 "config": {
-                    "log_space": 100
+                    "log_space": 200
                 },
 
                 # user settings
@@ -165,7 +179,7 @@ class Database:
             self.recent = SubmitConfig(SlurmConfig(**data["recent"].pop("slurm_config", {})), **data["recent"])
 
         # clean databse
-        log_space = self.config.get("log_space", 100)
+        log_space = self.config.get("log_space", 200)
         candidates = [p for p in self.base_path.iterdir() if p.is_dir()]
         if log_space > 0 and len(candidates) > log_space: # remove old folders
             to_remove = sorted(candidates)[:-log_space]
@@ -211,6 +225,9 @@ class Database:
                         warnings.warn(f"Fails to copy files in command line: {arg}. You might need to keep this file untouched till the job starts running.", UserWarning)
                     
                 _command.append(arg)
+            
+            # env vars for python modules
+            os.environ['PYTHONPATH'] = os.environ['PATH'] + ':' + str(os.getcwd())
             return _command
 
         # do execution
@@ -218,19 +235,111 @@ class Database:
             args = utils.get_command(config, tp = "srun")
 
             if config.task == 0:
-                args += resolve_files(command)
-                utils.set_screen_shape()
-                os.system(shlex.join(args))
-                # subprocess.run(args, shell=False) # will raise error when KeyboardInterrupt
+
+                if config.clash == -1:
+
+                    args += resolve_files(command)
+                    utils.set_screen_shape()
+                    os.system(shlex.join(args))
+
+                elif config.clash == 0:
+
+                    # init clash
+                    clash = Clash()
+                    pid, port = clash.get_service(self.identifier)
+                    tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
+
+                    # write the shell script
+                    shell_folder = self.base_path / self.identifier
+                    shell_folder.mkdir(parents=True, exist_ok=True)
+                    shell_path = shell_folder / "script.sh"
+
+                    with open(shell_path, 'w') as f:
+                        print("#!/usr/bin/bash", file = f)
+                        print("", file = f)
+                        print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
+                        print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
+                        print(shlex.join(clash.get_ssh_command(port, tgt_port)), file=f)
+                        print("sleep 1", file=f)
+                        print(shlex.join(resolve_files(command)), file=f)
+                    
+                    # set env vars for tqdm
+                    utils.set_screen_shape()
+
+                    # add commands
+                    args += ["bash", str(shell_path)]
+                    os.system(shlex.join(args))
+
+                    clash.release_service(self.identifier)
+                    # subprocess.run(args, shell=False) # will raise error when KeyboardInterrupt
+
+                else:
+
+                    tgt_port = random.randint(30000, 40000)
+
+                    # write the shell script
+                    shell_folder = self.base_path / self.identifier
+                    shell_folder.mkdir(parents=True, exist_ok=True)
+                    shell_path = shell_folder / "script.sh"
+
+                    with open(shell_path, 'w') as f:
+                        print("#!/usr/bin/bash", file = f)
+                        print("", file = f)
+                        print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
+                        print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
+                        print(shlex.join(Clash.get_ssh_command(config.clash, tgt_port)), file=f)
+                        print("sleep 1", file=f)
+                        print(shlex.join(resolve_files(command)), file=f)
+                    
+                    # set env vars for tqdm
+                    utils.set_screen_shape()
+
+                    # add commands
+                    args += ["bash", str(shell_path)]
+                    os.system(shlex.join(args))
+
+                
             elif config.task == 2:
                 args += command
                 print(" ".join(args))
+        
         elif config.task in (1, 3): # execute sbatch
             args = utils.get_command(config, tp = "sbatch")
             args += [""]
 
             if config.task == 1:
-                args += [shlex.join(resolve_files(command))]
+
+                if config.clash == -1:
+
+                    args += [shlex.join(resolve_files(command))]
+
+                elif config.clash == 0:
+
+                    # init clash
+                    clash = Clash()
+                    pid, port = clash.get_service(self.identifier)
+                    tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
+
+                    warnings.warn(f"Using clash in sbatch is not recommended. We cannot stop your clash service on the login node! Please manually stop it with command 'kill -9 {pid}' after your job exits.")
+
+                    args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
+                    args += ["sleep 1"]
+                    args += [shlex.join(resolve_files(command))]
+                    args += [shlex.join(['python', __file__, '0', self.identifier])] # release
+
+                else:
+
+                    # init clash
+                    tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
+
+                    args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [shlex.join(Clash.get_ssh_command(config.clash, tgt_port))]
+                    args += ["sleep 1"]
+                    args += [shlex.join(resolve_files(command))]
+                
                 # write the shell script
                 shell_folder = self.base_path / self.identifier
                 shell_folder.mkdir(parents=True, exist_ok=True)
@@ -241,6 +350,7 @@ class Database:
                         print(line, file = f)
 
                 os.system(shlex.join(["sbatch", str(shell_path)]))
+                
             elif config.task == 3:
                 args += [shlex.join(command)]
                 print("\n".join(args))
@@ -331,4 +441,240 @@ class utils:
 
         if isinstance(rows, int):
             os.environ.setdefault("LINES", str(rows + 1))
+
+class Clash:
+
+    EXEC_FOLDER = '~/.cache/sapp'
+
+    def __init__(self, use_custom: int = 0) -> None:
+        """
+        Initialize the clash service.
+
+        Arguments:
+            - use_custom: Use the custom clash setting with default path (~/.config/clash).
+                          Carry the customized port.
+        """
+        self.exec_folder = Path(self.EXEC_FOLDER).expanduser()
+        self.use_custom = use_custom
+
+    @property
+    def executable(self) -> Path:
+        """
+        Return the path to the clash executable. Download if not found.
+        """
+
+        exec_path = self.exec_folder / "clash-linux-amd64"
+
+        if not exec_path.exists(): # download and cache
+
+            self.exec_folder.mkdir(parents=True, exist_ok=True)
+
+            # TODO: auto download the latest version
+            url = 'https://github.com/Dreamacro/clash/releases/download/v1.17.0/clash-linux-amd64-v1.17.0.gz'
+
+            r = requests.get(url, stream = True)
+            total = int(r.headers.get('Content-Length', 0)) // 1024
+            with tempfile.TemporaryFile("w+b") as tmp:
+                # download to tmp dir
+                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download Clash", total=total, unit='KB', leave=False):
+                    if chunk:
+                        tmp.write(chunk)
+                tmp.seek(0)
+                # move to home
+                with open(exec_path, "wb") as f:
+                    f.write(gzip.decompress(tmp.read()))
+            
+            exec_path.chmod(mode = 484) # rwxr--r--
+
+        mmdb_path = self.exec_folder / "clash" / "Country.mmdb"
+
+        if not mmdb_path.exists():
+
+            mmdb_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # use fastly instead of cdn
+            url = "https://fastly.jsdelivr.net/gh/Dreamacro/maxmind-geoip@release/Country.mmdb"
+
+            r = requests.get(url, stream = True)
+            total = int(r.headers.get('Content-Length', 0)) // 1024
+            with tempfile.TemporaryFile("w+b") as tmp:
+                # download to tmp dir
+                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download Country.mmdb", total=total, unit='KB', leave=False):
+                    if chunk:
+                        tmp.write(chunk)
+                tmp.seek(0)
+                # move to home
+                with open(mmdb_path, "wb") as f:
+                    f.write(tmp.read())
+            
+        return exec_path
     
+    
+    def get_service(self, identifier: str) -> Tuple[int, int]:
+        """
+        Return a clash service with a tuple (pid, port).
+        Register the current application.
+
+        Arguments:
+            - identifier: The only identifier of the application to use the service.
+        """
+        if self.use_custom:
+            logger = self.exec_folder / "logger-custom.json"
+        else:
+            logger = self.exec_folder / "logger.json"
+
+        # check if service already exist
+        with FileLock(logger) as lock:
+            is_alive = False
+            status = {"pid": None, "port": None, "jobs": []}
+
+            if logger.exists():
+                # read the service data, and append the identifier.
+                with open(logger, "r") as f:
+                    string = f.read()
+
+                if string:
+                    status = json.loads(string)
+
+                    # check if the service is still running.
+                    if (Path('/proc') / str(status.get("pid", -1))).exists():
+                        is_alive = True
+                        pid, port = status["pid"], status["port"]
+                        status["jobs"].append(identifier)
+
+            if not is_alive:
+                # create a new service
+                if self.use_custom:
+                    pid = self.runbg(['nohup', str(self.executable)])
+                    port = self.use_custom
+                    
+                else:
+                    ## Step 1. Get a free port
+                    freeport = FreePort()
+                    port = freeport.port
+
+                    ## Step 2. Initialize the config file
+                    config_folder = self.exec_folder / "clash"
+                    config_folder.mkdir(parents=True, exist_ok=True)
+
+                    with open(config_folder / "config.yaml", 'w') as f:
+                        print(f"mixed-port: {port}", file=f)
+                    
+                    ## Step 3. Start service
+                    pid = self.runbg(['nohup', str(self.executable), "-d", str(config_folder)])
+
+                    freeport.release()
+
+                status = {"pid": pid, "port": port, "jobs": [identifier]}
+
+            with open(logger, "w") as f:
+                f.write(json.dumps(status))
+
+        return pid, port
+
+
+    def release_service(self, identifier: str) -> None:
+        """
+        Stop the clash service if no application is running.
+        """
+        if self.use_custom:
+            logger = self.exec_folder / "logger-custom.json"
+        else:
+            logger = self.exec_folder / "logger.json"
+
+        with FileLock(logger) as lock:
+            is_alive = False
+            status = {}
+
+            if logger.exists():
+                # read the service data, and append the identifier.
+                with open(logger, "r") as f:
+                    string = f.read()
+
+                if string:
+                    status = json.loads(string)
+
+                    # check if the service is still running.
+                    if (Path('/proc') / str(status.get("pid", -1))).exists():
+                        is_alive = True
+
+            if is_alive:
+                if identifier in status.get("jobs", []):
+                    status["jobs"].remove(identifier)
+
+                    # double check squeue is not empty
+                    r = os.popen("squeue --noheader")
+                    result = r.read()
+                    r.close()
+
+                    if status["jobs"] and result.strip():
+                        with open(logger, "w") as f:
+                            f.write(json.dumps(status))
+                    else:
+                        # shut down service
+                        self.runbg(["kill", "-9", str(status["pid"])])
+                        logger.unlink()
+                else:
+                    # it is strange that the process is not logged
+                    pass
+            else:
+                logger.unlink()
+
+    def release_service_compute(self, identifier: str) -> None:
+        """
+        On compute node we cannot stop the service (for now)
+        but we could update the log file.
+        """
+        if self.use_custom:
+            logger = self.exec_folder / "logger-custom.json"
+        else:
+            logger = self.exec_folder / "logger.json"
+
+        with FileLock(logger) as lock:
+            is_alive = False
+            status = {}
+
+            if logger.exists():
+                # read the service data, and append the identifier.
+                with open(logger, "r") as f:
+                    string = f.read()
+
+                if string:
+                    status = json.loads(string)
+                    is_alive = True
+
+            if is_alive:
+                if identifier in status.get("jobs", []):
+                    status["jobs"].remove(identifier)
+
+                    with open(logger, "w") as f:
+                        f.write(json.dumps(status))
+                else:
+                    # it is strange that the process is not logged
+                    pass
+
+
+    @staticmethod
+    def runbg(command: List[str]) -> int:
+        """
+        Run command and return a pid.
+        ref: https://stackoverflow.com/questions/6011235
+        """
+        p = subprocess.Popen(command,
+            stdout=open('/dev/null', 'w'),
+            stderr=open('/dev/null', 'w'),
+            preexec_fn=os.setpgrp
+        )
+        return p.pid
+    
+    @staticmethod
+    def get_ssh_command(src_port: int, tgt_port: int) -> List[str]:
+        host_name, login_name = socket.gethostname(), os.getlogin()
+        command = ["ssh", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}"]
+        return command
+    
+
+if __name__ == '__main__':
+    use_custom, identifier = int(sys.argv[1]), sys.argv[2]
+    clash = Clash(use_custom)
+    clash.release_service_compute(identifier)

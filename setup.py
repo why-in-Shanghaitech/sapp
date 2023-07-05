@@ -14,8 +14,12 @@ setup(
     include_package_data=True,
     zip_safe=True,
     license='MIT',
-    install_requires=['npyscreen>=4.10.5'],
-    python_requires='>=3',
+    install_requires=[
+        'npyscreen>=4.10.5',
+        'requests',
+        'tqdm'
+    ],
+    python_requires='>=3.8',
     entry_points={
         'console_scripts': [
             'sapp=sapp:main',

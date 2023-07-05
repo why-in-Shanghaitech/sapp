@@ -418,6 +418,7 @@ class SubmitForm(FormMultiPageAction):
     def on_ok(self):
         # write to config
         self.submit_config.task = self.get_widget("task").value[0]
+        self.submit_config.clash = int(self.get_widget("clash").value) if (self.get_widget("clash").value in (str(i) for i in range(-1, 65536))) else -1
         self.submit_config.time = self.get_widget("time").value
         self.submit_config.jobname = self.get_widget("jobname").value
         self.submit_config.output = self.get_widget("output").value
@@ -445,6 +446,7 @@ class SubmitForm(FormMultiPageAction):
         
         task = self.auto_add(TitleSelectOne, w_id="task", max_height=4, value=[0], name="Task", values = ["Submit job with srun", "Submit job with sbatch", "Print srun command", "Print sbatch header"], scroll_exit=True, comments="Task to execute. (press arrow keys to show description)", select_exit=True)
         self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", comments="(Optional) Job name for slurm. Will appear in squeue.")
+        clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value="0", comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
         self.auto_add(npyscreen.TitleText, w_id="time", value="0-01:00:00", name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
         output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id and %x for job name. You may want to leave it blank for srun.")
         error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id and %x for job name. You may want to leave it blank for srun.")
@@ -454,11 +456,22 @@ class SubmitForm(FormMultiPageAction):
             if task.value and task.value[0] in (1, 3) and not output.value and not error.value:
                 output.value = str(database.base_path / database.identifier / "output.txt")
                 error.value = str(database.base_path / database.identifier / "error.txt")
+                output.update()
+                error.update()
             elif task.value and task.value[0] in (0, 2) \
                 and output.value == str(database.base_path / database.identifier / "output.txt") \
                 and error.value == str(database.base_path / database.identifier / "error.txt"):
                 output.value = None
                 error.value = None
+                output.update()
+                error.update()
+            if task.value and task.value[0] in (1, 3) and clash.value == "0":
+                clash.value = "-1"
+                clash.update()
+            elif task.value and task.value[0] in (0, 2) and clash.value == "-1":
+                clash.value = "0"
+                clash.update()
+            
         task.when_value_edited = when_value_edited
 
 
