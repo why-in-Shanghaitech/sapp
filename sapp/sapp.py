@@ -3,7 +3,7 @@
 # Copyright (c) Haoyi Wu.
 # Licensed under the MIT license.
 
-from forms import SlurmApplication
+from .forms import SlurmApplication
 import sys
 
 def main():

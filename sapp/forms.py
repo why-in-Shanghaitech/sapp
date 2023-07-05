@@ -2,8 +2,8 @@
 # Licensed under the MIT license.
 
 import npyscreen
-from slurm_config import SlurmConfig, SubmitConfig, Database, utils
-from gpustat import get_card_list
+from .slurm_config import SlurmConfig, SubmitConfig, Database, utils
+from .gpustat import get_card_list
 
 class MuteRoundCheckBox(npyscreen.RoundCheckBox):
     False_box = ' - '

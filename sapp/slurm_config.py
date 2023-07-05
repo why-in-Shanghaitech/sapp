@@ -13,8 +13,8 @@ import requests
 import socket
 import gzip, tempfile
 from tqdm import tqdm
-from filelock import FileLock
-from bindport import FreePort
+from .filelock import FileLock
+from .bindport import FreePort
 import random
 
 

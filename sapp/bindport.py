@@ -1,6 +1,6 @@
 """https://gist.github.com/phizaz/c62162f45ca1f453ce265d09222ee96d"""
 
-from filelock import FileLock
+from .filelock import FileLock
 from pathlib import Path
 import random, socket
  
