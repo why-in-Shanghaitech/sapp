@@ -327,7 +327,7 @@ class Database:
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
                     args += ["sleep 1"]
                     args += [shlex.join(resolve_files(command))]
-                    args += [shlex.join(['python', __file__, '0', self.identifier])] # release
+                    args += [shlex.join(['python', '-c', f'from sapp.slurm_config import Clash;Clash(0).release_service_compute("{self.identifier}")'])] # release
 
                 else:
 
@@ -674,9 +674,4 @@ class Clash:
         host_name, login_name = socket.gethostname(), os.getlogin()
         command = ["ssh", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}"]
         return command
-    
 
-if __name__ == '__main__':
-    use_custom, identifier = int(sys.argv[1]), sys.argv[2]
-    clash = Clash(use_custom)
-    clash.release_service_compute(identifier)
