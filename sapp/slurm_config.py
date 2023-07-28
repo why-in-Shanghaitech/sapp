@@ -232,7 +232,7 @@ class Database:
 
         # do execution
         if config.task in (0, 2): # execute srun
-            args = utils.get_command(config, tp = "srun")
+            args = utils.get_command(config, tp = "srun", identifier=self.identifier)
 
             if config.task == 0:
 
@@ -304,7 +304,7 @@ class Database:
                 print(" ".join(args))
         
         elif config.task in (1, 3): # execute sbatch
-            args = utils.get_command(config, tp = "sbatch")
+            args = utils.get_command(config, tp = "sbatch", identifier=self.identifier)
             args += [""]
 
             if config.task == 1:
@@ -349,19 +349,29 @@ class Database:
                     for line in args:
                         print(line, file = f)
 
+                # print the output and error file path to console
+                if config.output:
+                    print("Stdout filepath:", utils.resolve_identifier(config.output, self.identifier))
+                if config.error:
+                    print("Stderr filepath:", utils.resolve_identifier(config.error, self.identifier))
+
                 os.system(shlex.join(["sbatch", str(shell_path)]))
                 
             elif config.task == 3:
                 args += [shlex.join(command)]
                 print("\n".join(args))
 
-        
+
 
 class utils:
     """Namespace for utils."""
+    
+    @staticmethod
+    def resolve_identifier(s: str, identifier: str = None):
+        return s.replace("%i", identifier) if identifier is not None else s
 
     @staticmethod
-    def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None):
+    def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identifier: str = None):
         slurm_config = config.slurm_config if isinstance(config, SubmitConfig) else config
         if tp is None and isinstance(config, SubmitConfig):
             tp = 'srun' if config.task in (0, 2) else 'sbatch'
@@ -384,8 +394,8 @@ class utils:
 
             if isinstance(config, SubmitConfig):
                 args += ["-t", config.time]
-                if config.output: args += ["-o", config.output]
-                if config.error: args += ["-e", config.error]
+                if config.output: args += ["-o", utils.resolve_identifier(config.output, identifier)]
+                if config.error: args += ["-e", utils.resolve_identifier(config.error, identifier)]
                 if config.jobname: args += ["-J", config.jobname]
 
         elif tp == 'sbatch':
@@ -403,8 +413,8 @@ class utils:
 
             if isinstance(config, SubmitConfig):
                 args += [f"#SBATCH -t {config.time}"]
-                if config.output: args += [f"#SBATCH -o {config.output}"]
-                if config.error: args += [f"#SBATCH -e {config.error}"]
+                if config.output: args += [f"#SBATCH -o {utils.resolve_identifier(config.output, identifier)}"]
+                if config.error: args += [f"#SBATCH -e {utils.resolve_identifier(config.error, identifier)}"]
                 if config.jobname: args += [f"#SBATCH -J {config.jobname}"]
         
         return args
