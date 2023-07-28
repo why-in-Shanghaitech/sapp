@@ -520,15 +520,13 @@ class Clash:
         Arguments:
             - identifier: The only identifier of the application to use the service.
         """
-        if self.use_custom:
-            logger = self.exec_folder / "logger-custom.json"
-        else:
-            logger = self.exec_folder / "logger.json"
+        logger = self.exec_folder / "logger.json"
+        hostname = socket.gethostname()
 
         # check if service already exist
         with FileLock(logger) as lock:
-            is_alive = False
-            status = {"pid": None, "port": None, "jobs": []}
+            data = {}
+            key = hostname + ('-custom' if self.use_custom else '')
 
             if logger.exists():
                 # read the service data, and append the identifier.
@@ -536,15 +534,17 @@ class Clash:
                     string = f.read()
 
                 if string:
-                    status = json.loads(string)
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
 
-                    # check if the service is still running.
-                    if (Path('/proc') / str(status.get("pid", -1))).exists():
-                        is_alive = True
-                        pid, port = status["pid"], status["port"]
-                        status["jobs"].append(identifier)
+            # check if the service is still running.
+            if key in data and (Path('/proc') / str(status.get("pid", -1))).exists():
+                # is alive
+                pid, port = status["pid"], status["port"]
+                status["jobs"].append(identifier)
 
-            if not is_alive:
+            else:
                 # create a new service
                 if self.use_custom:
                     pid = self.runbg(['nohup', str(self.executable)])
@@ -569,8 +569,10 @@ class Clash:
 
                 status = {"pid": pid, "port": port, "jobs": [identifier]}
 
+            # update data
             with open(logger, "w") as f:
-                f.write(json.dumps(status))
+                data[key] = status
+                f.write(json.dumps(data))
 
         return pid, port
 
@@ -579,28 +581,26 @@ class Clash:
         """
         Stop the clash service if no application is running.
         """
-        if self.use_custom:
-            logger = self.exec_folder / "logger-custom.json"
-        else:
-            logger = self.exec_folder / "logger.json"
+        logger = self.exec_folder / "logger.json"
+        hostname = socket.gethostname()
 
         with FileLock(logger) as lock:
-            is_alive = False
-            status = {}
+            data = {}
+            key = hostname + ('-custom' if self.use_custom else '')
 
+            # read data
             if logger.exists():
-                # read the service data, and append the identifier.
                 with open(logger, "r") as f:
                     string = f.read()
 
                 if string:
-                    status = json.loads(string)
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
 
-                    # check if the service is still running.
-                    if (Path('/proc') / str(status.get("pid", -1))).exists():
-                        is_alive = True
-
-            if is_alive:
+            # check if the service is still running.
+            if key in data and (Path('/proc') / str(status.get("pid", -1))).exists():
+                # is alive
                 if identifier in status.get("jobs", []):
                     status["jobs"].remove(identifier)
 
@@ -611,46 +611,53 @@ class Clash:
 
                     if status["jobs"] and result.strip():
                         with open(logger, "w") as f:
-                            f.write(json.dumps(status))
+                            data[key] = status
+                            f.write(json.dumps(data))
                     else:
                         # shut down service
                         self.runbg(["kill", "-9", str(status["pid"])])
-                        logger.unlink()
+                        with open(logger, "w") as f:
+                            data.pop(key)
+                            f.write(json.dumps(data))
                 else:
                     # it is strange that the process is not logged
                     pass
             else:
-                logger.unlink()
+                with open(logger, "w") as f:
+                    data.pop(key, None) # safe even if key is not in data
+                    f.write(json.dumps(data))
 
     def release_service_compute(self, identifier: str) -> None:
         """
         On compute node we cannot stop the service (for now)
         but we could update the log file.
         """
-        if self.use_custom:
-            logger = self.exec_folder / "logger-custom.json"
-        else:
-            logger = self.exec_folder / "logger.json"
+        logger = self.exec_folder / "logger.json"
+        hostname = socket.gethostname()
 
         with FileLock(logger) as lock:
-            is_alive = False
-            status = {}
+            data = {}
+            key = hostname + ('-custom' if self.use_custom else '')
 
+            # read data
             if logger.exists():
-                # read the service data, and append the identifier.
                 with open(logger, "r") as f:
                     string = f.read()
 
                 if string:
-                    status = json.loads(string)
-                    is_alive = True
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
 
-            if is_alive:
+            # check if the service is still running.
+            if key in data:
+                # is alive
                 if identifier in status.get("jobs", []):
                     status["jobs"].remove(identifier)
 
                     with open(logger, "w") as f:
-                        f.write(json.dumps(status))
+                        data[key] = status
+                        f.write(json.dumps(data))
                 else:
                     # it is strange that the process is not logged
                     pass
