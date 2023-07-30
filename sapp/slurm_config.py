@@ -689,6 +689,6 @@ class Clash:
     @staticmethod
     def get_ssh_command(src_port: int, tgt_port: int) -> List[str]:
         host_name, login_name = socket.gethostname(), os.getlogin()
-        command = ["ssh", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}"]
+        command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}"]
         return command
 
