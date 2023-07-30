@@ -1,7 +1,6 @@
 """https://gist.github.com/phizaz/c62162f45ca1f453ce265d09222ee96d"""
 
 from .filelock import FileLock
-from pathlib import Path
 import random, socket
  
 class BindFreePort(object):
@@ -44,8 +43,7 @@ class FreePort(object):
             Since we cannot be certain the user will bind the port 'immediately' (actually it is not possible using
             this flow. We must ensure that the port will not be reacquired even it is not bound to anything
             '''
-            Path('/tmp/sapp').mkdir(parents=True, exist_ok=True)
-            lock = FileLock('/tmp/sapp/port_{}'.format(bind.port))
+            lock = FileLock('/tmp/sapp_port_{}'.format(bind.port))
             success = lock.acquire(blocking=False)
  
             if success:
