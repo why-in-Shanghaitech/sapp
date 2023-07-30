@@ -22,7 +22,7 @@ class MenuForm(npyscreen.FormBaseNew):
         self.command = " ".join(command) if isinstance(command, list) else command
         preview = "Run with the same setting as you last time use SAPP without a job name. A quick entry for fast job submission."
         if parentApp.database.recent:
-            preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun'))}" 
+            preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier))}" 
             if parentApp.database.recent.task in (1, 3):
                 preview = 'Preview: sbatch' + preview[13:]
         self.options = [
@@ -448,19 +448,19 @@ class SubmitForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", comments="(Optional) Job name for slurm. Will appear in squeue.")
         clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value="0", comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
         self.auto_add(npyscreen.TitleText, w_id="time", value="0-01:00:00", name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
-        output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id and %x for job name. You may want to leave it blank for srun.")
-        error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id and %x for job name. You may want to leave it blank for srun.")
+        output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
+        error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
 
         def when_value_edited():
             database: Database = self.parentApp.database
             if task.value and task.value[0] in (1, 3) and not output.value and not error.value:
-                output.value = str(database.base_path / database.identifier / "output.txt")
-                error.value = str(database.base_path / database.identifier / "error.txt")
+                output.value = str(database.base_path / "%i" / "output.txt")
+                error.value = str(database.base_path / "%i" / "error.txt")
                 output.update()
                 error.update()
             elif task.value and task.value[0] in (0, 2) \
-                and output.value == str(database.base_path / database.identifier / "output.txt") \
-                and error.value == str(database.base_path / database.identifier / "error.txt"):
+                and output.value == str(database.base_path / "%i" / "output.txt") \
+                and error.value == str(database.base_path / "%i" / "error.txt"):
                 output.value = None
                 error.value = None
                 output.update()

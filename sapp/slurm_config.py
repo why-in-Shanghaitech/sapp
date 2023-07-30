@@ -232,7 +232,7 @@ class Database:
 
         # do execution
         if config.task in (0, 2): # execute srun
-            args = utils.get_command(config, tp = "srun")
+            args = utils.get_command(config, tp = "srun", identifier=self.identifier)
 
             if config.task == 0:
 
@@ -304,7 +304,7 @@ class Database:
                 print(" ".join(args))
         
         elif config.task in (1, 3): # execute sbatch
-            args = utils.get_command(config, tp = "sbatch")
+            args = utils.get_command(config, tp = "sbatch", identifier=self.identifier)
             args += [""]
 
             if config.task == 1:
@@ -327,7 +327,7 @@ class Database:
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
                     args += ["sleep 1"]
                     args += [shlex.join(resolve_files(command))]
-                    args += [shlex.join(['python', __file__, '0', self.identifier])] # release
+                    args += [shlex.join(['python', '-c', f'from sapp.slurm_config import Clash;Clash(0).release_service_compute("{self.identifier}")'])] # release
 
                 else:
 
@@ -349,19 +349,29 @@ class Database:
                     for line in args:
                         print(line, file = f)
 
+                # print the output and error file path to console
+                if config.output:
+                    print("Stdout filepath:", utils.resolve_identifier(config.output, self.identifier))
+                if config.error:
+                    print("Stderr filepath:", utils.resolve_identifier(config.error, self.identifier))
+
                 os.system(shlex.join(["sbatch", str(shell_path)]))
                 
             elif config.task == 3:
                 args += [shlex.join(command)]
                 print("\n".join(args))
 
-        
+
 
 class utils:
     """Namespace for utils."""
+    
+    @staticmethod
+    def resolve_identifier(s: str, identifier: str = None):
+        return s.replace("%i", identifier) if identifier is not None else s
 
     @staticmethod
-    def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None):
+    def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identifier: str = None):
         slurm_config = config.slurm_config if isinstance(config, SubmitConfig) else config
         if tp is None and isinstance(config, SubmitConfig):
             tp = 'srun' if config.task in (0, 2) else 'sbatch'
@@ -384,8 +394,8 @@ class utils:
 
             if isinstance(config, SubmitConfig):
                 args += ["-t", config.time]
-                if config.output: args += ["-o", config.output]
-                if config.error: args += ["-e", config.error]
+                if config.output: args += ["-o", utils.resolve_identifier(config.output, identifier)]
+                if config.error: args += ["-e", utils.resolve_identifier(config.error, identifier)]
                 if config.jobname: args += ["-J", config.jobname]
 
         elif tp == 'sbatch':
@@ -403,8 +413,8 @@ class utils:
 
             if isinstance(config, SubmitConfig):
                 args += [f"#SBATCH -t {config.time}"]
-                if config.output: args += [f"#SBATCH -o {config.output}"]
-                if config.error: args += [f"#SBATCH -e {config.error}"]
+                if config.output: args += [f"#SBATCH -o {utils.resolve_identifier(config.output, identifier)}"]
+                if config.error: args += [f"#SBATCH -e {utils.resolve_identifier(config.error, identifier)}"]
                 if config.jobname: args += [f"#SBATCH -J {config.jobname}"]
         
         return args
@@ -520,15 +530,13 @@ class Clash:
         Arguments:
             - identifier: The only identifier of the application to use the service.
         """
-        if self.use_custom:
-            logger = self.exec_folder / "logger-custom.json"
-        else:
-            logger = self.exec_folder / "logger.json"
+        logger = self.exec_folder / "logger.json"
+        hostname = socket.gethostname()
 
         # check if service already exist
         with FileLock(logger) as lock:
-            is_alive = False
-            status = {"pid": None, "port": None, "jobs": []}
+            data = {}
+            key = hostname + ('-custom' if self.use_custom else '')
 
             if logger.exists():
                 # read the service data, and append the identifier.
@@ -536,15 +544,17 @@ class Clash:
                     string = f.read()
 
                 if string:
-                    status = json.loads(string)
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
 
-                    # check if the service is still running.
-                    if (Path('/proc') / str(status.get("pid", -1))).exists():
-                        is_alive = True
-                        pid, port = status["pid"], status["port"]
-                        status["jobs"].append(identifier)
+            # check if the service is still running.
+            if key in data and (Path('/proc') / str(status.get("pid", -1))).exists():
+                # is alive
+                pid, port = status["pid"], status["port"]
+                status["jobs"].append(identifier)
 
-            if not is_alive:
+            else:
                 # create a new service
                 if self.use_custom:
                     pid = self.runbg(['nohup', str(self.executable)])
@@ -569,8 +579,10 @@ class Clash:
 
                 status = {"pid": pid, "port": port, "jobs": [identifier]}
 
+            # update data
             with open(logger, "w") as f:
-                f.write(json.dumps(status))
+                data[key] = status
+                f.write(json.dumps(data))
 
         return pid, port
 
@@ -579,28 +591,26 @@ class Clash:
         """
         Stop the clash service if no application is running.
         """
-        if self.use_custom:
-            logger = self.exec_folder / "logger-custom.json"
-        else:
-            logger = self.exec_folder / "logger.json"
+        logger = self.exec_folder / "logger.json"
+        hostname = socket.gethostname()
 
         with FileLock(logger) as lock:
-            is_alive = False
-            status = {}
+            data = {}
+            key = hostname + ('-custom' if self.use_custom else '')
 
+            # read data
             if logger.exists():
-                # read the service data, and append the identifier.
                 with open(logger, "r") as f:
                     string = f.read()
 
                 if string:
-                    status = json.loads(string)
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
 
-                    # check if the service is still running.
-                    if (Path('/proc') / str(status.get("pid", -1))).exists():
-                        is_alive = True
-
-            if is_alive:
+            # check if the service is still running.
+            if key in data and (Path('/proc') / str(status.get("pid", -1))).exists():
+                # is alive
                 if identifier in status.get("jobs", []):
                     status["jobs"].remove(identifier)
 
@@ -611,46 +621,53 @@ class Clash:
 
                     if status["jobs"] and result.strip():
                         with open(logger, "w") as f:
-                            f.write(json.dumps(status))
+                            data[key] = status
+                            f.write(json.dumps(data))
                     else:
                         # shut down service
                         self.runbg(["kill", "-9", str(status["pid"])])
-                        logger.unlink()
+                        with open(logger, "w") as f:
+                            data.pop(key)
+                            f.write(json.dumps(data))
                 else:
                     # it is strange that the process is not logged
                     pass
             else:
-                logger.unlink()
+                with open(logger, "w") as f:
+                    data.pop(key, None) # safe even if key is not in data
+                    f.write(json.dumps(data))
 
     def release_service_compute(self, identifier: str) -> None:
         """
         On compute node we cannot stop the service (for now)
         but we could update the log file.
         """
-        if self.use_custom:
-            logger = self.exec_folder / "logger-custom.json"
-        else:
-            logger = self.exec_folder / "logger.json"
+        logger = self.exec_folder / "logger.json"
+        hostname = socket.gethostname()
 
         with FileLock(logger) as lock:
-            is_alive = False
-            status = {}
+            data = {}
+            key = hostname + ('-custom' if self.use_custom else '')
 
+            # read data
             if logger.exists():
-                # read the service data, and append the identifier.
                 with open(logger, "r") as f:
                     string = f.read()
 
                 if string:
-                    status = json.loads(string)
-                    is_alive = True
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
 
-            if is_alive:
+            # check if the service is still running.
+            if key in data:
+                # is alive
                 if identifier in status.get("jobs", []):
                     status["jobs"].remove(identifier)
 
                     with open(logger, "w") as f:
-                        f.write(json.dumps(status))
+                        data[key] = status
+                        f.write(json.dumps(data))
                 else:
                     # it is strange that the process is not logged
                     pass
@@ -674,9 +691,4 @@ class Clash:
         host_name, login_name = socket.gethostname(), os.getlogin()
         command = ["ssh", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}"]
         return command
-    
 
-if __name__ == '__main__':
-    use_custom, identifier = int(sys.argv[1]), sys.argv[2]
-    clash = Clash(use_custom)
-    clash.release_service_compute(identifier)
