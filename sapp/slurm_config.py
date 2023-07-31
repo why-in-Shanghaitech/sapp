@@ -621,7 +621,16 @@ class Clash:
                     result = r.read()
                     r.close()
 
-                    if status["jobs"] and result.strip():
+                    # remove the lines with status CG
+                    is_empty = True
+                    for line in result.split('\n'):
+                        if line.strip() == "":
+                            continue
+                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                            continue
+                        is_empty = False
+
+                    if status["jobs"] and not is_empty:
                         with open(logger, "w") as f:
                             data[key] = status
                             f.write(json.dumps(data))
