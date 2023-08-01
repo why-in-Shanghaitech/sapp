@@ -275,6 +275,7 @@ class Database:
 
                 else:
 
+                    clash = Clash()
                     tgt_port = random.randint(30000, 40000)
 
                     # write the shell script
@@ -287,7 +288,7 @@ class Database:
                         print("", file = f)
                         print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
                         print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
-                        print(shlex.join(Clash.get_ssh_command(config.clash, tgt_port)), file=f)
+                        print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file=f)
                         print("sleep 1", file=f)
                         print(shlex.join(resolve_files(command)), file=f)
                     
@@ -332,11 +333,12 @@ class Database:
                 else:
 
                     # init clash
+                    clash = Clash()
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
                     args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
-                    args += [shlex.join(Clash.get_ssh_command(config.clash, tgt_port))]
+                    args += [shlex.join(clash.get_ssh_command(config.clash, tgt_port))]
                     args += ["sleep 1"]
                     args += [shlex.join(resolve_files(command))]
                 
@@ -619,7 +621,16 @@ class Clash:
                     result = r.read()
                     r.close()
 
-                    if status["jobs"] and result.strip():
+                    # remove the lines with status CG
+                    is_empty = True
+                    for line in result.split('\n'):
+                        if line.strip() == "":
+                            continue
+                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                            continue
+                        is_empty = False
+
+                    if status["jobs"] and not is_empty:
                         with open(logger, "w") as f:
                             data[key] = status
                             f.write(json.dumps(data))
@@ -671,6 +682,57 @@ class Clash:
                 else:
                     # it is strange that the process is not logged
                     pass
+    
+    def prepare_ssh_env(self) -> None:
+        """
+        Prepare password free login with ssh. This is necessary for the compute node to do port forwarding.
+        """
+        private_key = self.exec_folder / 'id_rsa'
+        public_key = self.exec_folder / 'id_rsa.pub'
+        authorized_keys = Path('~/.ssh/authorized_keys').expanduser()
+
+        # add a file lock to avoid race condition
+        with FileLock(private_key) as lock:
+
+            # check the existence of ssh key pair, and authorized keys
+            if private_key.is_file() and public_key.is_file() and authorized_keys.is_file():
+                with open(public_key, 'r') as f_in, open(authorized_keys, 'r') as f_out:
+                    for line in f_out.readlines():
+                        if f_in.readline().strip() in line.strip():
+                            # everything is prepared, exit
+                            return
+                        
+            # remove existing files
+            private_key.unlink(missing_ok=True)
+            public_key.unlink(missing_ok=True)
+
+            # generate the ssh key pair and write into authorized keys
+            os.system(shlex.join(["ssh-keygen", "-f", str(private_key), "-N", ""]))
+
+            with open(public_key, 'r') as f:
+                public_key_s = f.read()
+
+            ## check if end with newline, if not, add a new line at front
+            if authorized_keys.is_file():
+                with open(authorized_keys, 'r') as f:
+                    s = f.read()
+                if s != "" and not s.endswith('\n'):
+                    public_key_s = "\n" + public_key_s
+            
+            # append to authorized keys
+            with open(authorized_keys, 'a') as f:
+                f.write(public_key_s)
+    
+    def get_ssh_command(self, src_port: int, tgt_port: int) -> List[str]:
+        """
+        Return the command for the compute node to do port forwarding to the login node.
+        This function should only be called on the login node.
+        """
+        self.prepare_ssh_env()
+        private_key = self.exec_folder / 'id_rsa'
+        host_name, login_name = socket.gethostname(), os.getlogin()
+        command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-i", str(private_key)]
+        return command
 
 
     @staticmethod
@@ -685,10 +747,3 @@ class Clash:
             preexec_fn=os.setpgrp
         )
         return p.pid
-    
-    @staticmethod
-    def get_ssh_command(src_port: int, tgt_port: int) -> List[str]:
-        host_name, login_name = socket.gethostname(), os.getlogin()
-        command = ["ssh", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}"]
-        return command
-
