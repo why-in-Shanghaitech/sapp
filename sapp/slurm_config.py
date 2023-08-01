@@ -244,6 +244,9 @@ class Database:
 
                 elif config.clash == 0:
 
+                    # get_service may block the process, resolve file first
+                    resolved_command = resolve_files(command)
+
                     # init clash
                     clash = Clash()
                     pid, port = clash.get_service(self.identifier)
@@ -261,7 +264,7 @@ class Database:
                         print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
                         print(shlex.join(clash.get_ssh_command(port, tgt_port)), file=f)
                         print("sleep 1", file=f)
-                        print(shlex.join(resolve_files(command)), file=f)
+                        print(shlex.join(resolved_command), file=f)
                     
                     # set env vars for tqdm
                     utils.set_screen_shape()
@@ -316,19 +319,21 @@ class Database:
 
                 elif config.clash == 0:
 
+                    # get_service may block the process, resolve file first
+                    resolved_command = resolve_files(command)
+
                     # init clash
                     clash = Clash()
                     pid, port = clash.get_service(self.identifier)
+                    host_name, login_name = socket.gethostname(), os.getlogin()
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
-
-                    warnings.warn(f"Using clash in sbatch is not recommended. We cannot stop your clash service on the login node! Please manually stop it with command 'kill -9 {pid}' after your job exits.")
 
                     args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
                     args += ["sleep 1"]
-                    args += [shlex.join(resolve_files(command))]
-                    args += [shlex.join(['python', '-c', f'from sapp.slurm_config import Clash;Clash(0).release_service_compute("{self.identifier}")'])] # release
+                    args += [shlex.join(resolved_command)]
+                    args += [shlex.join(['python', '-c', f'from sapp.slurm_config import Clash; Clash.release_service_compute("{self.identifier}", "{host_name}", "{login_name}")'])] # release
 
                 else:
 
@@ -648,41 +653,6 @@ class Clash:
                     data.pop(key, None) # safe even if key is not in data
                     f.write(json.dumps(data))
 
-    def release_service_compute(self, identifier: str) -> None:
-        """
-        On compute node we cannot stop the service (for now)
-        but we could update the log file.
-        """
-        logger = self.exec_folder / "logger.json"
-        hostname = socket.gethostname()
-
-        with FileLock(logger) as lock:
-            data = {}
-            key = hostname + ('-custom' if self.use_custom else '')
-
-            # read data
-            if logger.exists():
-                with open(logger, "r") as f:
-                    string = f.read()
-
-                if string:
-                    data = json.loads(string)
-            
-            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
-
-            # check if the service is still running.
-            if key in data:
-                # is alive
-                if identifier in status.get("jobs", []):
-                    status["jobs"].remove(identifier)
-
-                    with open(logger, "w") as f:
-                        data[key] = status
-                        f.write(json.dumps(data))
-                else:
-                    # it is strange that the process is not logged
-                    pass
-    
     def prepare_ssh_env(self) -> None:
         """
         Prepare password free login with ssh. This is necessary for the compute node to do port forwarding.
@@ -747,3 +717,67 @@ class Clash:
             preexec_fn=os.setpgrp
         )
         return p.pid
+    
+    @classmethod
+    def release_service_compute(cls, identifier: str, host_name: str, login_name: str, use_custom: int = 0) -> None:
+        """
+        On compute node we need to stop the service on the login node through ssh.
+        Require calling `prepare_ssh_env` first on the login node.
+        """
+        exec_folder = Path(cls.EXEC_FOLDER).expanduser()
+        logger = exec_folder / "logger.json"
+
+        with FileLock(logger) as lock:
+            data = {}
+            key = host_name + ('-custom' if use_custom else '')
+
+            # read data
+            if logger.exists():
+                with open(logger, "r") as f:
+                    string = f.read()
+
+                if string:
+                    data = json.loads(string)
+            
+            status = data.get(key, {"pid": -1, "port": -1, "jobs": []})
+
+            # since on compute node, we cannot check if the service is still running.
+            # this is fine: we check the existence in `get_service`.
+            if key in data:
+                # data valid
+                if identifier in status.get("jobs", []):
+                    status["jobs"].remove(identifier)
+
+                    # double check squeue is not empty
+                    r = os.popen("squeue --noheader")
+                    result = r.read()
+                    r.close()
+
+                    # remove the lines with status CG and current job
+                    is_empty = True
+                    this_jobid = os.environ.get('SLURM_JOB_ID', None)
+                    for line in result.split('\n'):
+                        if line.strip() == "":
+                            continue
+                        if len(line) > 18 and line[:18].strip() == this_jobid:
+                            continue
+                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                            continue
+                        is_empty = False
+
+                    if status["jobs"] and not is_empty:
+                        with open(logger, "w") as f:
+                            data[key] = status
+                            f.write(json.dumps(data))
+                    else:
+                        # shut down service
+                        private_key = exec_folder / 'id_rsa'
+                        command = ["ssh", "-o", "StrictHostKeyChecking=no", f"{login_name}@{host_name}", "-i", str(private_key), "kill", "-9", str(status["pid"])]
+                        os.system(shlex.join(command)) # have to wait till finish, which will introduce an overhead.
+                        
+                        with open(logger, "w") as f:
+                            data.pop(key)
+                            f.write(json.dumps(data))
+                else:
+                    # it is strange that the process is not logged
+                    pass
