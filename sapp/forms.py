@@ -224,11 +224,11 @@ class SlurmConfigForm(FormMultiPageAction):
         partitions = self.partitions
         cards = self.cards
         
-        self.auto_add(npyscreen.TitleText, w_id="name", value=self.slurm_config.name, name = "Name", comments="Config name. The only identifier to store in the database for your own use.", editable=not self.freeze_name)
-        self.auto_add(npyscreen.TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=10, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job.")
-        self.auto_add(npyscreen.TitleSlider, w_id="ntasks", value=self.slurm_config.ntasks, lowest=1, out_of=10, name = "# tasks", comments="Specify the number of tasks to run. Unless you know its meaning, do not change.")
-        self.auto_add(TitleSelectOne, w_id="disable_status", max_height=2, value=(not self.slurm_config.disable_status), name="Ctrl-C", values = ["Yes", "No"], scroll_exit=True, comments="Disable the display of task status when srun receives a single SIGINT (Ctrl-C). Only useful for srun.")
-        self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, comments="Always flush the outputs to console. Only useful for srun.")
+        self.auto_add(npyscreen.TitleText, w_id="name", value=self.slurm_config.name, name = "Name", comments="Config name. Only used by sapp. Later in sapp you may quickly select this config by its name.", editable=not self.freeze_name)
+        self.auto_add(npyscreen.TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=10, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
+        self.auto_add(npyscreen.TitleSlider, w_id="ntasks", value=self.slurm_config.ntasks, lowest=1, out_of=10, name = "# tasks", comments="Specify the number of tasks to run. Do not change unless you know its meaning.")
+        self.auto_add(TitleSelectOne, w_id="disable_status", max_height=2, value=(not self.slurm_config.disable_status), name="Ctrl-C", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Disable the display of task status when srun receives a single SIGINT (Ctrl-C). Safe to leave it untouched.")
+        self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Always flush the outputs to console. Only useful for srun. Safe to leave it untouched.")
 
         height = min(len(partitions), max(5, self.lines-self.text.height-6))
         partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {sum(card_list[p].values())})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
@@ -248,6 +248,12 @@ class SlurmConfigForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=32, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
         self.auto_add(npyscreen.TitleText, w_id="mem", value=self.slurm_config.mem, name = "Memory", comments="(Optional) Specify the real memory required per node. E.g. 40G.")
         self.auto_add(npyscreen.TitleText, w_id="other", value=self.slurm_config.other, name = "Other", comments="(Optional) Other command line arguments, such as '--exclude ai_gpu02,ai_gpu04'.")
+    
+    def pre_edit_loop(self):
+        super().pre_edit_loop()
+        
+        self.ok_button.comments = "Proceed to set job-specific details: choose to run with srun or sbatch, set the Internet, etc."
+        self.c_button.comments = "Back to the previous menu."
 
     def update(self, slurm_config: SlurmConfig = None, greetings: str = "", freeze_name: bool = False):
         self.freeze_name = freeze_name
@@ -294,9 +300,18 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         ]
         if parentApp.database.recent:
             self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+        
+        self._escape = False # adjust widgets escaper
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
+        if not self.field.value:
+            self.explanation.value = "* Please make a selection to proceed."
+            self.explanation.update()
+            self._escape = True
+            self.parentApp.setNextForm('select_config')
+            return
+
         if self.parentApp.database.recent:
             if self.field.value[0] == 0:
                 slurm_config = self.parentApp.database.recent.slurm_config
@@ -316,9 +331,18 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         self.parentApp.setNextFormPrevious()
     
     def adjust_widgets(self):
-        self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
-        self.explanation.update()
+        if self._escape == True:
+            self._escape = False
+        else:
+            self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
+            self.explanation.update()
         return super().adjust_widgets()
+    
+    def while_editing(self, *args, **kwargs):
+        if hasattr(self._widgets__[self.editw], "comments"):
+            self.explanation.value = getattr(self._widgets__[self.editw], "comments", "")
+            self.explanation.update()
+        return super().while_editing(*args, **kwargs)
 
     def create(self):
         text = self.add(npyscreen.FixedText, editable=False, value=f"Select a setting to execute.")
@@ -326,6 +350,12 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         self.add(npyscreen.FixedText, editable=False, value="")
         height = max(2, self.lines-text.height-6)
         self.field = self.add(TitleSelectOne, scroll_exit=True, select_exit=True, max_height=height, name="Settings", values = [v for v, _ in self.options])
+
+    def pre_edit_loop(self):
+        super().pre_edit_loop()
+
+        self._added_buttons["ok_button"].comments = "Proceed to set job-specific details: choose to run with srun or sbatch, set the Internet, etc."
+        self._added_buttons["cancel_button"].comments = "Back to the main menu."
 
 class EditRunConfigForm(npyscreen.ActionFormV2):
 
@@ -344,9 +374,18 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         ]
         if parentApp.database.recent:
             self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+        
+        self._escape = False # adjust widgets escaper
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
+        if not self.field.value:
+            self.explanation.value = "* Please make a selection to proceed."
+            self.explanation.update()
+            self._escape = True
+            self.parentApp.setNextForm('edit_run_config')
+            return
+
         if self.parentApp.database.recent:
             if self.field.value[0] == 0:
                 slurm_config = self.parentApp.database.recent.slurm_config
@@ -369,9 +408,18 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         self.parentApp.setNextFormPrevious()
     
     def adjust_widgets(self):
-        self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
-        self.explanation.update()
+        if self._escape == True:
+            self._escape = False
+        else:
+            self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
+            self.explanation.update()
         return super().adjust_widgets()
+    
+    def while_editing(self, *args, **kwargs):
+        if hasattr(self._widgets__[self.editw], "comments"):
+            self.explanation.value = getattr(self._widgets__[self.editw], "comments", "")
+            self.explanation.update()
+        return super().while_editing(*args, **kwargs)
 
     def create(self):
         text = self.add(npyscreen.FixedText, editable=False, value=f"Select a setting, then proceed to make some changes.")
@@ -379,8 +427,16 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         self.add(npyscreen.FixedText, editable=False, value="")
         height = max(2, self.lines-text.height-6)
         self.field = self.add(TitleSelectOne, scroll_exit=True, select_exit=True, max_height=height, name="Settings", values = [v for v, _ in self.options])
+    
+    def pre_edit_loop(self):
+        super().pre_edit_loop()
+
+        self._added_buttons["ok_button"].comments = "Proceed to make some changes to the setting you selected."
+        self._added_buttons["cancel_button"].comments = "Back to the main menu."
 
 class RemoveConfigForm(npyscreen.ActionFormV2):
+    CANCEL_BUTTON_BR_OFFSET = (2, 16)
+    OK_BUTTON_TEXT = 'Delete'
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
         self.options = [
@@ -389,7 +445,6 @@ class RemoveConfigForm(npyscreen.ActionFormV2):
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
-        self.parentApp.database.remove(self.field.value)
         self.parentApp.setNextForm(None)
     
     def on_cancel(self):
@@ -401,6 +456,12 @@ class RemoveConfigForm(npyscreen.ActionFormV2):
         self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
         self.explanation.update()
         return super().adjust_widgets()
+    
+    def while_editing(self, *args, **kwargs):
+        if hasattr(self._widgets__[self.editw], "comments"):
+            self.explanation.value = getattr(self._widgets__[self.editw], "comments", "")
+            self.explanation.update()
+        return super().while_editing(*args, **kwargs)
 
     def create(self):
         text = self.add(npyscreen.FixedText, editable=False, value=f"Select the settings to remove from the database.")
@@ -408,8 +469,16 @@ class RemoveConfigForm(npyscreen.ActionFormV2):
         self.add(npyscreen.FixedText, editable=False, value="")
         height = max(2, self.lines-text.height-6)
         self.field = self.add(TitleMultiSelect, scroll_exit=True, select_exit=True, max_height=height, name="Settings", values = [v for v, _ in self.options])
+    
+    def pre_edit_loop(self):
+        super().pre_edit_loop()
+
+        self._added_buttons["ok_button"].comments = "Confirm and remove the settings you selected."
+        self._added_buttons["cancel_button"].comments = "Back to the main menu."
 
 class SubmitForm(FormMultiPageAction):
+    CANCEL_BUTTON_BR_OFFSET = (2, 16)
+    OK_BUTTON_TEXT = 'Submit'
 
     def __init__(self, display_pages=True, pages_label_color='NORMAL', *args, **keywords):
         self.submit_config = SubmitConfig()
@@ -474,6 +543,12 @@ class SubmitForm(FormMultiPageAction):
             
         task.when_value_edited = when_value_edited
 
+    def pre_edit_loop(self):
+        super().pre_edit_loop()
+        
+        self.ok_button.comments = "Submit the job to the slurm system."
+        self.c_button.comments = "Back to the previous menu."
+
 
 class SlurmApplication(npyscreen.NPSAppManaged):
     def __init__(self, command):
@@ -513,7 +588,11 @@ class SlurmApplication(npyscreen.NPSAppManaged):
                 self.database.settings[idx] = submit.slurm_config
             self.database.execute(self.command, submit)
         elif menu == 6:
+            deleted = self.database.remove(self.getForm('remove_config').field.value)
             self.database.dump()
-            print("Settings successfully removed.")
+            if deleted:
+                print(f"Successfully removed {deleted} setting{'s' if deleted > 1 else ''}.")
+            else:
+                print("No setting is removed.")
         elif menu == 7:
             exit(0)
