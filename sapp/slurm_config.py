@@ -148,9 +148,14 @@ class Database:
     def add(self, config: SlurmConfig):
         self.settings.append(config)
 
-    def remove(self, indices: List[int]):
+    def remove(self, indices: List[int]) -> int:
+        """return the number of settings deleted."""
         if indices:
+            before = len(self.settings)
             self.settings = [self.settings[i] for i in range(len(self.settings)) if i not in indices]
+            after = len(self.settings)
+            return before - after
+        return 0
 
     def load(self):
         config_path = self.base_path / ".config"

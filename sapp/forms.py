@@ -300,9 +300,18 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         ]
         if parentApp.database.recent:
             self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+        
+        self._escape = False # adjust widgets escaper
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
+        if not self.field.value:
+            self.explanation.value = "* Please make a selection to proceed."
+            self.explanation.update()
+            self._escape = True
+            self.parentApp.setNextForm('select_config')
+            return
+
         if self.parentApp.database.recent:
             if self.field.value[0] == 0:
                 slurm_config = self.parentApp.database.recent.slurm_config
@@ -322,8 +331,11 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         self.parentApp.setNextFormPrevious()
     
     def adjust_widgets(self):
-        self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
-        self.explanation.update()
+        if self._escape == True:
+            self._escape = False
+        else:
+            self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
+            self.explanation.update()
         return super().adjust_widgets()
     
     def while_editing(self, *args, **kwargs):
@@ -362,9 +374,18 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         ]
         if parentApp.database.recent:
             self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+        
+        self._escape = False # adjust widgets escaper
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
+        if not self.field.value:
+            self.explanation.value = "* Please make a selection to proceed."
+            self.explanation.update()
+            self._escape = True
+            self.parentApp.setNextForm('edit_run_config')
+            return
+
         if self.parentApp.database.recent:
             if self.field.value[0] == 0:
                 slurm_config = self.parentApp.database.recent.slurm_config
@@ -387,8 +408,11 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         self.parentApp.setNextFormPrevious()
     
     def adjust_widgets(self):
-        self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
-        self.explanation.update()
+        if self._escape == True:
+            self._escape = False
+        else:
+            self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
+            self.explanation.update()
         return super().adjust_widgets()
     
     def while_editing(self, *args, **kwargs):
@@ -421,7 +445,6 @@ class RemoveConfigForm(npyscreen.ActionFormV2):
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
     def on_ok(self):
-        self.parentApp.database.remove(self.field.value)
         self.parentApp.setNextForm(None)
     
     def on_cancel(self):
@@ -565,7 +588,11 @@ class SlurmApplication(npyscreen.NPSAppManaged):
                 self.database.settings[idx] = submit.slurm_config
             self.database.execute(self.command, submit)
         elif menu == 6:
+            deleted = self.database.remove(self.getForm('remove_config').field.value)
             self.database.dump()
-            print("Settings successfully removed.")
+            if deleted:
+                print(f"Successfully removed {deleted} setting{'s' if deleted > 1 else ''}.")
+            else:
+                print("No setting is removed.")
         elif menu == 7:
             exit(0)
