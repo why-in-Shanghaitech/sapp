@@ -233,7 +233,7 @@ class SlurmConfigForm(FormMultiPageAction):
         height = max(2, min(len(partitions), max(5, self.lines-self.text.height-6)))
         partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {sum(card_list[p].values())})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
 
-        height = min(max(len(cards[p]) for p in partitions), max(5, self.lines-self.text.height-6))
+        height = max(2, min(max(len(cards[p]) for p in partitions), max(5, self.lines-self.text.height-6)))
         p = partitions[partition_widget.value[0]]
         gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
 
