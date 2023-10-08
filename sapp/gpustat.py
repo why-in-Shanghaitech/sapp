@@ -14,17 +14,31 @@ def run_cammand(cmd, retry = 1):
 
 def parse_gres_line(line):
     """Parse the gresused line."""
+    # XXX: this is not an elegent solution (cannot cover edge cases). it might
+    #      be better to turn to 3rd party python slurm packages.
     line = line.strip()
+
+    # w/o gpu type
+    m = re.match(r'([\w\*]+)\s*gpu\:(\d+)\s*gpu\:(\d+)', line)
+    if m:
+        status = m.group(1)
+        if status not in ['idle', 'mix', 'alloc']: return None
+        gpu = 'Unknown_GPU_Type'
+        avail = int(m.group(2))
+        used = int(m.group(3))
+        return gpu, avail - used
+        
+    # w/ gpu type
     m = re.match(r'([\w\*]+)\s*gpu\:([\w\-\(\)]+)\:(\d+)\s*gpu\:(?:[\w\-\(\)]+)\:(\d+)\(IDX\:([\d\-\,N/A]+)\)', line)
-    if not m: return None
+    if m:
+        status = m.group(1)
+        if status not in ['idle', 'mix', 'alloc']: return None
+        gpu = m.group(2)
+        avail = int(m.group(3))
+        used = int(m.group(4))
+        return gpu, avail - used
 
-    status = m.group(1)
-    if status not in ['idle', 'mix', 'alloc']: return None
-    gpu = m.group(2)
-    avail = int(m.group(3))
-    used = int(m.group(4))
-
-    return gpu, avail - used
+    return None
 
 
 def get_card_list():
