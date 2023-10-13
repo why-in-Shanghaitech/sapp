@@ -22,7 +22,7 @@ class MenuForm(npyscreen.FormBaseNew):
         self.command = " ".join(command) if isinstance(command, list) else command
         preview = "Run with the same setting as you last time use SAPP without a job name. A quick entry for fast job submission."
         if parentApp.database.recent:
-            preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier))}" 
+            preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier, parentApp.database.config))}" 
             if parentApp.database.recent.task in (1, 3):
                 preview = 'Preview: sbatch' + preview[13:]
         self.options = [
@@ -33,6 +33,7 @@ class MenuForm(npyscreen.FormBaseNew):
             ("Start from an existing setting...", "Edit an existing setting then run the job. Your change will NOT be saved to the database."),
             ("Edit existing settings...", "Edit an existing setting then run the job. Your change will be saved to the database."),
             ("Remove existing settings...", "Remove existing settings in the database."),
+            ("Modify general settings...", "General settings of SAPP. You might want to make some changes so that it fits your environment."),
             ("Exit", "Leave SAPP without doing anything.")
         ]
         self.preview = preview
@@ -56,6 +57,8 @@ class MenuForm(npyscreen.FormBaseNew):
             self.parentApp.setNextForm('edit_run_config')
         elif self.field.value[0] == 6:
             self.parentApp.setNextForm('remove_config')
+        elif self.field.value[0] == 7:
+            self.parentApp.setNextForm('general_config')
         else:
             self.parentApp.setNextForm(None)
 
@@ -230,10 +233,10 @@ class SlurmConfigForm(FormMultiPageAction):
         self.auto_add(TitleSelectOne, w_id="disable_status", max_height=2, value=(not self.slurm_config.disable_status), name="Ctrl-C", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Disable the display of task status when srun receives a single SIGINT (Ctrl-C). Safe to leave it untouched.")
         self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Always flush the outputs to console. Only useful for srun. Safe to leave it untouched.")
 
-        height = min(len(partitions), max(5, self.lines-self.text.height-6))
+        height = max(2, min(len(partitions), max(5, self.lines-self.text.height-6)))
         partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {sum(card_list[p].values())})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
 
-        height = min(max(len(cards[p]) for p in partitions), max(5, self.lines-self.text.height-6))
+        height = max(2, min(max(len(cards[p]) for p in partitions), max(5, self.lines-self.text.height-6)))
         p = partitions[partition_widget.value[0]]
         gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
 
@@ -296,10 +299,10 @@ class SelectConfigForm(npyscreen.ActionFormV2):
                 return card_list.get(partition, {}).get(gpu_type, 0)
 
         self.options = [
-            (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
+            (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
         ]
         if parentApp.database.recent:
-            self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+            self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun', general_config=parentApp.database.config))}"))
         
         self._escape = False # adjust widgets escaper
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
@@ -370,10 +373,10 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
                 return card_list.get(partition, {}).get(gpu_type, 0)
         
         self.options = [
-            (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
+            (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
         ]
         if parentApp.database.recent:
-            self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun'))}"))
+            self.options.insert(0, (f"RECENT (Available: {avail_of(parentApp.database.recent.slurm_config)})", f"Preview: {' '.join(utils.get_command(parentApp.database.recent.slurm_config, 'srun', general_config=parentApp.database.config))}"))
         
         self._escape = False # adjust widgets escaper
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
@@ -440,7 +443,7 @@ class RemoveConfigForm(npyscreen.ActionFormV2):
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
         self.options = [
-            (s.name, f"Preview: {' '.join(utils.get_command(s, 'srun'))}") for s in parentApp.database.settings
+            (s.name, f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
         ]
         super().__init__(name, parentApp, framed, help, color, widget_list, cycle_widgets, *args, **keywords)
 
@@ -550,6 +553,43 @@ class SubmitForm(FormMultiPageAction):
         self.c_button.comments = "Back to the previous menu."
 
 
+class GeneralConfigForm(FormMultiPageAction):
+    CANCEL_BUTTON_BR_OFFSET = (2, 16)
+    OK_BUTTON_TEXT = 'Apply'
+
+    def __init__(self, display_pages=True, pages_label_color='NORMAL', *args, **keywords):
+        self.parentApp = keywords["parentApp"]
+        self.general_config: dict = self.parentApp.database.config
+        super().__init__(display_pages, pages_label_color, *args, **keywords)
+    
+    def on_ok(self):
+        # write to config
+        self.general_config["log_space"] = int(self.get_widget("log_space").value)
+        self.general_config["gpu"] = self.get_widget("gpu").value == [1]
+        self.general_config["cache"] = self.get_widget("cache").value == [0]
+
+        # proceed to exit
+        self.parentApp.setNextForm(None)
+    
+    def on_cancel(self):
+        form = self.parentApp.getForm('MAIN')
+        form.field.value = None
+        self.parentApp.setNextFormPrevious()
+
+    def create(self):
+        super().create("General config for SAPP.")
+
+        self.auto_add(npyscreen.TitleText, w_id="log_space", name = "Log Space", value=str(self.general_config.get("log_space", 200)), comments="Number of logs to keep. By default at ~/.config/sapp. Too small value may lead to task failure. 0 for unlimited.")
+        self.auto_add(TitleSelectOne, w_id="gpu", max_height=2, value=[1 if self.general_config.get("gpu", False) else 0], name="GRES", values = ["Submit using --gres=gpu:<type>:<num>", "Submit using --gpus=<type>:<num>"], scroll_exit=True, comments="How to specify the gpu requirement.", select_exit=True)
+        self.auto_add(TitleSelectOne, w_id="cache", max_height=2, value=[0 if self.general_config.get("cache", True) else 1], name="Cache", values = ["Cache files in the commands and use independent environment", "Do not cache and submit the file when job is allocated"], scroll_exit=True, comments="Whether to cache the files. This allows you change the files right after submission, no need to wait for allocation.", select_exit=True)
+
+    def pre_edit_loop(self):
+        super().pre_edit_loop()
+        
+        self.ok_button.comments = "Apply the changes to general config."
+        self.c_button.comments = "Back to the main menu."
+
+
 class SlurmApplication(npyscreen.NPSAppManaged):
     def __init__(self, command):
         self.command = command
@@ -564,6 +604,7 @@ class SlurmApplication(npyscreen.NPSAppManaged):
         self.addForm('remove_config', RemoveConfigForm, name="SAPP", minimum_lines=9, scroll_exit=True)
         self.addForm('new_config', SlurmConfigForm, name="SAPP", minimum_lines=14, scroll_exit=True)
         self.addForm('submit', SubmitForm, name="SAPP", minimum_lines=14, scroll_exit=True)
+        self.addForm('general_config', GeneralConfigForm, name="SAPP", minimum_lines=9, scroll_exit=True)
     
     def process(self):
         menu = self.getForm('MAIN').field.value[0]
@@ -595,4 +636,8 @@ class SlurmApplication(npyscreen.NPSAppManaged):
             else:
                 print("No setting is removed.")
         elif menu == 7:
+            self.database.config = self.getForm('general_config').general_config
+            self.database.dump()
+            print(f"Successfully updated SAPP general config.")
+        elif menu == 8:
             exit(0)

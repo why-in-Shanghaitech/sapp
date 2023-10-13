@@ -12,7 +12,7 @@ Use arrow keys to select, type to input.
     <img src="imgs/demoPlay.gif">
 </div>
 
-If you want to execute commands other that `python`, just add `sapp` in front of your command. Actually, `spython` is just a short cut for `sapp python`.
+If you want to execute commands other that `python`, just add `sapp` in front of your command. Actually, `spython` is just a short cut for `sapp python`. For example, use `sapp bash train.sh` to run `bash train.sh` on the compute node.
 
 ## Install
 
@@ -38,6 +38,4 @@ pip uninstall sapp
  - The GPU status query is based on the command `sinfo`.
  - The Internet service is based on clash and ssh port forwarding.
 
-> **Warning**  
-> This tool is only tested in Shanghaitech SIST Cluster. It may not suit for all slurm systems. (But easy to extend!)
 

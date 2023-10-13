@@ -166,7 +166,7 @@ class Database:
             data = {
                 # sapp global config
                 "config": {
-                    "log_space": 200
+                    "log_space": 0
                 },
 
                 # user settings
@@ -184,7 +184,7 @@ class Database:
             self.recent = SubmitConfig(SlurmConfig(**data["recent"].pop("slurm_config", {})), **data["recent"])
 
         # clean databse
-        log_space = self.config.get("log_space", 200)
+        log_space = self.config.get("log_space", 0)
         candidates = [p for p in self.base_path.iterdir() if p.is_dir()]
         if log_space > 0 and len(candidates) > log_space: # remove old folders
             to_remove = sorted(candidates)[:-log_space]
@@ -234,10 +234,14 @@ class Database:
             # env vars for python modules
             os.environ['PYTHONPATH'] = os.environ['PATH'] + ':' + str(os.getcwd())
             return _command
+        
+        # if the user does not want to cache the files, resolve_files will do nothing
+        if not self.config.get("cache", True):
+            resolve_files = lambda x: x
 
         # do execution
         if config.task in (0, 2): # execute srun
-            args = utils.get_command(config, tp = "srun", identifier=self.identifier)
+            args = utils.get_command(config, tp = "srun", identifier=self.identifier, general_config=self.config)
 
             if config.task == 0:
 
@@ -313,7 +317,7 @@ class Database:
                 print(" ".join(args))
         
         elif config.task in (1, 3): # execute sbatch
-            args = utils.get_command(config, tp = "sbatch", identifier=self.identifier)
+            args = utils.get_command(config, tp = "sbatch", identifier=self.identifier, general_config=self.config)
             args += [""]
 
             if config.task == 1:
@@ -383,7 +387,8 @@ class utils:
         return s.replace("%i", identifier) if identifier is not None else s
 
     @staticmethod
-    def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identifier: str = None):
+    def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identifier: str = None, general_config: dict = None):
+        general_config = {} if general_config is None else general_config
         slurm_config = config.slurm_config if isinstance(config, SubmitConfig) else config
         if tp is None and isinstance(config, SubmitConfig):
             tp = 'srun' if config.task in (0, 2) else 'sbatch'
@@ -396,10 +401,11 @@ class utils:
             if slurm_config.disable_status: args += ["-X"]
             if slurm_config.unbuffered: args += ["-u"]
             args += ["-p", str(slurm_config.partition)]
-            if slurm_config.gpu_type == "Any Type":
-                args += [f"--gres=gpu:{slurm_config.num_gpus}"]
+            gpu_argname = "--gpus=" if general_config.get("gpu", False) else "--gres=gpu:"
+            if slurm_config.gpu_type == "Any Type" or slurm_config.gpu_type == "Unknown GPU Type":
+                args += [f"{gpu_argname}{slurm_config.num_gpus}"]
             else:
-                args += [f"--gres=gpu:{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
+                args += [f"{gpu_argname}{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
             args += ["-c", str(slurm_config.cpus_per_task)]
             if slurm_config.mem: args += ["--mem", slurm_config.mem]
             args += shlex.split(slurm_config.other)
@@ -415,10 +421,11 @@ class utils:
             args += [f"#SBATCH -N {slurm_config.nodes}"]
             args += [f"#SBATCH -n {slurm_config.ntasks}"]
             args += [f"#SBATCH -p {slurm_config.partition}"]
-            if slurm_config.gpu_type == "Any Type":
-                args += [f"#SBATCH --gres=gpu:{slurm_config.num_gpus}"]
+            gpu_argname = "--gpus=" if general_config.get("gpu", False) else "--gres=gpu:"
+            if slurm_config.gpu_type == "Any Type" or slurm_config.gpu_type == "Unknown GPU Type":
+                args += [f"#SBATCH {gpu_argname}{slurm_config.num_gpus}"]
             else:
-                args += [f"#SBATCH --gres=gpu:{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
+                args += [f"#SBATCH {gpu_argname}{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
             args += [f"#SBATCH -c {slurm_config.cpus_per_task}"]
             if slurm_config.mem: args += [f"#SBATCH --mem {slurm_config.mem}"]
             if slurm_config.other: args += [f"#SBATCH {slurm_config.other}"] # TODO: what about multiple arguments?
