@@ -16,30 +16,33 @@ def parse_gres_line(line):
     """Parse the gresused line."""
     # XXX: this is not an elegent solution (cannot cover edge cases). it might
     #      be better to turn to 3rd party python slurm packages.
-    line = line.strip()
+    status = line[:10].strip()
+    gres = line[10:40].strip()
+    gres_used = line[40:90].strip()
 
-    # w/o gpu type
-    m = re.match(r'([\w\*]+)\s*gpu\:(\d+)\s*gpu\:(\d+)', line)
-    if m:
-        status = m.group(1)
-        if status not in ['idle', 'mix', 'alloc']: return None
+    # we do not consider drain nodes
+    if status not in ['idle', 'mix', 'alloc']:
+        return None
+
+    # regex from https://github.com/itzsimpl/prometheus-slurm-exporter/blob/64535e24c61ea4d44795571d054c268b1ca69a35/gpus.go#L73
+    # might fail when multiple types of gpus appear on the same node
+    pattern = r'gpu:(\(null\)|[^:(]*):?([0-9]+)(\([^)]*\))?'
+    gres_match = re.match(pattern, gres)
+    gres_used_match = re.match(pattern, gres_used)
+
+    # the gres line is not in the expected format
+    if gres_match is None or gres_used_match is None:
+        return None
+
+    gpu = gres_match.group(1)
+    avail = int(gres_match.group(2))
+    used = int(gres_used_match.group(2))
+
+    # the gpu type is not specified
+    if gpu == '(null)' or gpu == '':
         gpu = 'Unknown_GPU_Type'
-        avail = int(m.group(2))
-        used = int(m.group(3))
-        return gpu, avail - used
-        
-    # w/ gpu type
-    m = re.match(r'([\w\*]+)\s*gpu\:([\w\-\(\)]+)\:(\d+)\s*gpu\:(?:[\w\-\(\)]+)\:(\d+)\(IDX\:([\d\-\,N/A]+)\)', line)
-    if m:
-        status = m.group(1)
-        if status not in ['idle', 'mix', 'alloc']: return None
-        gpu = m.group(2)
-        avail = int(m.group(3))
-        used = int(m.group(4))
-        return gpu, avail - used
 
-    return None
-
+    return gpu, avail - used
 
 def get_card_list():
     """
@@ -66,7 +69,7 @@ def get_card_list():
     resources = {}
     for partition in partitions:
         part_status = defaultdict(int)
-        response = run_cammand(['sinfo', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition])
+        response = run_cammand(['sinfo', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition, '--noheader'])
         for line in response.split('\n'):
             parse = parse_gres_line(line)
             if parse is not None:
