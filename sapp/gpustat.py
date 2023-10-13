@@ -40,7 +40,7 @@ def parse_gres_line(line):
 
     # the gpu type is not specified
     if gpu == '(null)' or gpu == '':
-        gpu = 'Unknown_GPU_Type'
+        gpu = 'Unknown GPU Type'
 
     return gpu, avail - used
 
