@@ -500,8 +500,8 @@ class Clash:
             print("Preparing web environment. Please wait, it could take a few minutes...")
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
-            # TODO: auto download the latest version
-            url = 'https://github.com/Dreamacro/clash/releases/download/v1.17.0/clash-linux-amd64-v1.17.0.gz'
+            # Since clash has been removed from github, we use a hidden repo.
+            url = 'https://github.com/Loyalsoldier/clash-rules/raw/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
