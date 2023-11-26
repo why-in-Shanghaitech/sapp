@@ -537,6 +537,13 @@ class Clash:
                 # move to home
                 with open(mmdb_path, "wb") as f:
                     f.write(tmp.read())
+        
+        # prepare for custom usage of clash
+        default_mmdb_path = Path("~/.config/clash/Country.mmdb").expanduser()
+
+        if not default_mmdb_path.exists():
+            default_mmdb_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(mmdb_path, default_mmdb_path)
             
         return exec_path
     
