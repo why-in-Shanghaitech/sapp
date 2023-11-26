@@ -500,8 +500,8 @@ class Clash:
             print("Preparing web environment. Please wait, it could take a few minutes...")
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
-            # TODO: auto download the latest version
-            url = 'https://github.com/Dreamacro/clash/releases/download/v1.17.0/clash-linux-amd64-v1.17.0.gz'
+            # Since clash has been removed from github, we use a hidden repo.
+            url = 'https://github.com/Loyalsoldier/clash-rules/raw/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
@@ -537,6 +537,13 @@ class Clash:
                 # move to home
                 with open(mmdb_path, "wb") as f:
                     f.write(tmp.read())
+        
+        # prepare for custom usage of clash
+        default_mmdb_path = Path("~/.config/clash/Country.mmdb").expanduser()
+
+        if not default_mmdb_path.exists():
+            default_mmdb_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(mmdb_path, default_mmdb_path)
             
         return exec_path
     
