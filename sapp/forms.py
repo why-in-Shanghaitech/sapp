@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 import npyscreen
+import shlex
 from .slurm_config import SlurmConfig, SubmitConfig, Database, utils
 from .gpustat import get_card_list
 
@@ -19,7 +20,7 @@ class MenuForm(npyscreen.FormBaseNew):
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
         command = parentApp.command
-        self.command = " ".join(command) if isinstance(command, list) else command
+        self.command = shlex.join(command) if isinstance(command, list) else command
         preview = "Run with the same setting as you last time use SAPP without a job name. A quick entry for fast job submission."
         if parentApp.database.recent:
             preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier, parentApp.database.config))}" 
@@ -72,7 +73,9 @@ class MenuForm(npyscreen.FormBaseNew):
         return super().adjust_widgets()
 
     def create(self):
-        text = self.add(npyscreen.FixedText, editable=False, value=f"Welcome to sapp menu page! Command to execute: {self.command}")
+        welcome_message = "Welcome to sapp menu page! Command to execute: "
+        text = self.add(npyscreen.FixedText, editable=False, value=welcome_message)
+        self.add(npyscreen.FixedText, relx=len(welcome_message)+text.relx, rely=text.rely, color="IMPORTANT", editable=False, value=f"{self.command}")
         self.explanation = self.add(npyscreen.FixedText, editable=False, color="STANDOUT", value=self.preview)
         self.add(npyscreen.FixedText, editable=False, value="")
         height = max(2, self.lines-text.height-6)
