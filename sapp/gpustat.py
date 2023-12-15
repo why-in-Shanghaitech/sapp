@@ -69,7 +69,7 @@ def get_card_list():
     resources = {}
     for partition in partitions:
         part_status = defaultdict(int)
-        response = run_cammand(['sinfo', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition, '--noheader'])
+        response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition, '--noheader'])
         for line in response.split('\n'):
             parse = parse_gres_line(line)
             if parse is not None:
