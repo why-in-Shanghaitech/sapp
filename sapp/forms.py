@@ -245,9 +245,13 @@ class SlurmConfigForm(FormMultiPageAction):
 
         def when_value_edited():
             p = partitions[partition_widget.value[0]]
+            if p == when_value_edited.old_p:
+                return
+            when_value_edited.old_p = p
             gpu_type_widget.value = [0]
             gpu_type_widget.values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]]
             gpu_type_widget.update()
+        when_value_edited.old_p = None
         partition_widget.entry_widget.when_value_edited = when_value_edited
 
         self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
@@ -280,13 +284,16 @@ class SlurmConfigForm(FormMultiPageAction):
             self.get_widget("disable_status").value = [0 if self.slurm_config.disable_status else 1]
             self.get_widget("unbuffered").value = [0 if self.slurm_config.unbuffered else 1]
             self.get_widget("partition").value = [self.partitions.index(self.slurm_config.partition)] if self.slurm_config.partition in self.partitions else [0]
-            self.get_widget("gpu_type").value = [0 if self.slurm_config.gpu_type == "Any Type" else (self.cards.get(self.slurm_config.partition, []).index(self.slurm_config.gpu_type) if self.slurm_config.gpu_type in self.cards.get(self.slurm_config.partition, []) else 0)]
+            self.get_widget("partition").update() # we must update early to get the correct gpu_type
+            self.get_widget("partition").entry_widget.when_value_edited() # update options for gpu_type
+            avail_cards = self.cards.get(self.slurm_config.partition, [])
+            self.get_widget("gpu_type").value = [0 if self.slurm_config.gpu_type == "Any Type" else ((avail_cards.index(self.slurm_config.gpu_type)+1) if self.slurm_config.gpu_type in avail_cards else 0)]
             self.get_widget("num_gpus").value = self.slurm_config.num_gpus
             self.get_widget("cpus_per_task").value = self.slurm_config.cpus_per_task
             self.get_widget("mem").value = self.slurm_config.mem
             self.get_widget("other").value = self.slurm_config.other
 
-            for key in ("name", "nodes", "ntasks", "disable_status", "unbuffered", "partition", "gpu_type", "num_gpus", "cpus_per_task", "mem", "other"):
+            for key in ("name", "nodes", "ntasks", "disable_status", "unbuffered", "gpu_type", "num_gpus", "cpus_per_task", "mem", "other"):
                 self.get_widget(key).update()
 
 class SelectConfigForm(npyscreen.ActionFormV2):
