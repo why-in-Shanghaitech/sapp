@@ -229,6 +229,16 @@ class SlurmConfigForm(FormMultiPageAction):
         card_list = self.card_list
         partitions = self.partitions
         cards = self.cards
+
+        def avail_of(partition: str, gpu_type: str = None, gpu_count: int = 1) -> int:
+            gpu_count = max(1, gpu_count)
+            if partition not in card_list:
+                return 0
+            if gpu_type is None:
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
+            else:
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
         
         self.auto_add(npyscreen.TitleText, w_id="name", value=self.slurm_config.name, name = "Name", comments="Config name. Only used by sapp. Later in sapp you may quickly select this config by its name.", editable=not self.freeze_name)
         self.auto_add(npyscreen.TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=10, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
@@ -237,11 +247,11 @@ class SlurmConfigForm(FormMultiPageAction):
         self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Always flush the outputs to console. Only useful for srun. Safe to leave it untouched.")
 
         height = max(2, min(len(partitions), max(5, self.lines-self.text.height-6)))
-        partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {sum(card_list[p].values())})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
+        partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {avail_of(p)})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
 
         height = max(2, min(max(len(cards[p]) for p in partitions), max(5, self.lines-self.text.height-6)))
         p = partitions[partition_widget.value[0]]
-        gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
+        gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {avail_of(p)})"] + [f"{c} (Available: {avail_of(p, c)})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
 
         def when_value_edited():
             p = partitions[partition_widget.value[0]]
@@ -249,12 +259,21 @@ class SlurmConfigForm(FormMultiPageAction):
                 return
             when_value_edited.old_p = p
             gpu_type_widget.value = [0]
-            gpu_type_widget.values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]]
+            gpu_type_widget.values = [f"Any Type (Available: {avail_of(p)})"] + [f"{c} (Available: {avail_of(p, c)})" for c in cards[p]]
             gpu_type_widget.update()
         when_value_edited.old_p = None
         partition_widget.entry_widget.when_value_edited = when_value_edited
 
-        self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
+        num_gpu_widget = self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
+
+        def when_value_edited_gpu():
+            p = partitions[partition_widget.value[0]]
+            gpu_count = num_gpu_widget.value
+            partition_widget.values = [f"{p} (Available: {avail_of(p, gpu_count=gpu_count)})" for p in partitions]
+            gpu_type_widget.values = [f"Any Type (Available: {avail_of(p, gpu_count=gpu_count)})"] + [f"{c} (Available: {avail_of(p, c, gpu_count)})" for c in cards[p]]
+            self.display() # redraw the form so that no display problem
+        num_gpu_widget.entry_widget.when_value_edited = when_value_edited_gpu
+
         self.auto_add(npyscreen.TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=128, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
         self.auto_add(npyscreen.TitleText, w_id="mem", value=self.slurm_config.mem, name = "Memory", comments="(Optional) Specify the real memory required per node. E.g. 40G.")
         self.auto_add(npyscreen.TitleText, w_id="other", value=self.slurm_config.other, name = "Other", comments="(Optional) Other command line arguments, such as '--exclude ai_gpu02,ai_gpu04'.")
@@ -289,6 +308,7 @@ class SlurmConfigForm(FormMultiPageAction):
             avail_cards = self.cards.get(self.slurm_config.partition, [])
             self.get_widget("gpu_type").value = [0 if self.slurm_config.gpu_type == "Any Type" else ((avail_cards.index(self.slurm_config.gpu_type)+1) if self.slurm_config.gpu_type in avail_cards else 0)]
             self.get_widget("num_gpus").value = self.slurm_config.num_gpus
+            self.get_widget("num_gpus").entry_widget.when_value_edited() # update available cards
             self.get_widget("cpus_per_task").value = self.slurm_config.cpus_per_task
             self.get_widget("mem").value = self.slurm_config.mem
             self.get_widget("other").value = self.slurm_config.other
@@ -303,10 +323,14 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         def avail_of(config: SlurmConfig) -> int:
             partition = config.partition
             gpu_type = config.gpu_type
+            gpu_count = max(1, config.num_gpus)
+            if partition not in card_list:
+                return 0
             if gpu_type == 'Any Type':
-                return sum(card_list.get(partition, {}).values())
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
             else:
-                return card_list.get(partition, {}).get(gpu_type, 0)
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
 
         self.options = [
             (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
@@ -377,10 +401,14 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         def avail_of(config: SlurmConfig) -> int:
             partition = config.partition
             gpu_type = config.gpu_type
+            gpu_count = max(1, config.num_gpus)
+            if partition not in card_list:
+                return 0
             if gpu_type == 'Any Type':
-                return sum(card_list.get(partition, {}).values())
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
             else:
-                return card_list.get(partition, {}).get(gpu_type, 0)
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
         
         self.options = [
             (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
