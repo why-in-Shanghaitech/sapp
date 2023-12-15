@@ -19,13 +19,28 @@ class MuteTitleSelectOne(npyscreen.TitleMultiLine):
 class MenuForm(npyscreen.FormBaseNew):
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
+        card_list = parentApp.card_list
+        def avail_of(config: SlurmConfig) -> int:
+            partition = config.partition
+            gpu_type = config.gpu_type
+            gpu_count = max(1, config.num_gpus)
+            if partition not in card_list:
+                return 0
+            if gpu_type == 'Any Type':
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
+            else:
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
+        
         command = parentApp.command
         self.command = shlex.join(command) if isinstance(command, list) else command
         preview = "Run with the same setting as you last time use SAPP without a job name. A quick entry for fast job submission."
         if parentApp.database.recent:
-            preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier, parentApp.database.config))}" 
+            avail = avail_of(parentApp.database.recent.slurm_config)
+            preview = f"{' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier, parentApp.database.config))}" 
             if parentApp.database.recent.task in (1, 3):
-                preview = 'Preview: sbatch' + preview[13:]
+                preview = 'sbatch' + preview[4:]
+            preview = f"Preview ({avail}): " + preview
         self.options = [
             ("Execute with the most recent setting", preview),
             ("Select from pre-defined settings...", "Run with an existing setting. You may further specify the job name and more details."),
