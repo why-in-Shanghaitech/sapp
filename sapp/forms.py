@@ -533,6 +533,9 @@ class SubmitForm(FormMultiPageAction):
         self.submit_config.jobname = self.get_widget("jobname").value
         self.submit_config.output = self.get_widget("output").value
         self.submit_config.error = self.get_widget("error").value
+        mail_type = self.get_widget("mail_type").value
+        self.submit_config.mail_type = [self.get_widget("mail_type").values[i] for i in mail_type] if mail_type else None
+        self.submit_config.mail_user = self.get_widget("mail_user").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -560,6 +563,9 @@ class SubmitForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleText, w_id="time", value="0-01:00:00", name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
         output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
         error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
+        height = min(max(2, self.lines-self.text.height-6), 4)
+        self.auto_add(TitleMultiSelect, w_id="mail_type", name = "Mail Type", scroll_exit=True, select_exit=True, max_height=height, values = ["NONE", "BEGIN", "END", "FAIL", "REQUEUE", "ALL", "INVALID_DEPEND", "STAGE_OUT", "TIME_LIMIT", "TIME_LIMIT_90", "TIME_LIMIT_80", "TIME_LIMIT_50", "ARRAY_TASKS"], comments="(Optional) Mail type, the time you want to receive email. See sbatch manual for details.")
+        self.auto_add(npyscreen.TitleText, w_id="mail_user", name = "Mail User", comments="(Optional) Mail address to send the mail to. Leave it blank to send to your email address.")
 
         def when_value_edited():
             database: Database = self.parentApp.database
