@@ -537,6 +537,8 @@ class SubmitForm(FormMultiPageAction):
     OK_BUTTON_TEXT = 'Submit'
 
     def __init__(self, display_pages=True, pages_label_color='NORMAL', *args, **keywords):
+        self.parentApp = keywords["parentApp"]
+        self.general_config: dict = self.parentApp.database.config
         self.submit_config = SubmitConfig()
         super().__init__(display_pages, pages_label_color, *args, **keywords)
     
@@ -573,14 +575,14 @@ class SubmitForm(FormMultiPageAction):
         super().create("Submit the job to slurm.")
         
         task = self.auto_add(TitleSelectOne, w_id="task", max_height=4, value=[0], name="Task", values = ["Submit job with srun", "Submit job with sbatch", "Print srun command", "Print sbatch header"], scroll_exit=True, comments="Task to execute. (press arrow keys to show description)", select_exit=True)
-        self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", comments="(Optional) Job name for slurm. Will appear in squeue.")
-        clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value="0", comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
-        self.auto_add(npyscreen.TitleText, w_id="time", value="0-01:00:00", name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
+        self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", value=str(self.general_config.get("default_jobname", "")), comments="(Optional) Job name for slurm. Will appear in squeue.")
+        clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value=str(self.general_config.get("default_clash", "0")), comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
+        self.auto_add(npyscreen.TitleText, w_id="time", value=str(self.general_config.get("default_time", "0-01:00:00")), name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
         output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
         error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
         height = min(max(2, self.lines-self.text.height-6), 4)
         self.auto_add(TitleMultiSelect, w_id="mail_type", name = "Mail Type", scroll_exit=True, select_exit=True, max_height=height, values = ["NONE", "BEGIN", "END", "FAIL", "REQUEUE", "ALL", "INVALID_DEPEND", "STAGE_OUT", "TIME_LIMIT", "TIME_LIMIT_90", "TIME_LIMIT_80", "TIME_LIMIT_50", "ARRAY_TASKS"], comments="(Optional) Mail type, the time you want to receive email. See sbatch manual for details.")
-        self.auto_add(npyscreen.TitleText, w_id="mail_user", name = "Mail User", comments="(Optional) Mail address to send the mail to. Leave it blank to send to your email address.")
+        self.auto_add(npyscreen.TitleText, w_id="mail_user", name = "Mail User", value = str(self.general_config.get("default_mail_user", "")), comments="(Optional) Mail address to send the mail to. Leave it blank to send to your email address.")
 
         def when_value_edited():
             database: Database = self.parentApp.database
@@ -626,6 +628,10 @@ class GeneralConfigForm(FormMultiPageAction):
         self.general_config["log_space"] = int(self.get_widget("log_space").value)
         self.general_config["gpu"] = self.get_widget("gpu").value == [1]
         self.general_config["cache"] = self.get_widget("cache").value == [0]
+        self.general_config["default_jobname"] = self.get_widget("default_jobname").value
+        self.general_config["default_clash"] = self.get_widget("default_clash").value
+        self.general_config["default_time"] = self.get_widget("default_time").value
+        self.general_config["default_mail_user"] = self.get_widget("default_mail_user").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -641,6 +647,10 @@ class GeneralConfigForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleText, w_id="log_space", name = "Log Space", value=str(self.general_config.get("log_space", 200)), comments="Number of logs to keep. By default at ~/.config/sapp. Too small value may lead to task failure. 0 for unlimited.")
         self.auto_add(TitleSelectOne, w_id="gpu", max_height=2, value=[1 if self.general_config.get("gpu", False) else 0], name="GRES", values = ["Submit using --gres=gpu:<type>:<num>", "Submit using --gpus=<type>:<num>"], scroll_exit=True, comments="How to specify the gpu requirement.", select_exit=True)
         self.auto_add(TitleSelectOne, w_id="cache", max_height=2, value=[0 if self.general_config.get("cache", True) else 1], name="Cache", values = ["Cache files in the commands and use independent environment", "Do not cache and submit the file when job is allocated"], scroll_exit=True, comments="Whether to cache the files. This allows you change the files right after submission, no need to wait for allocation.", select_exit=True)
+        self.auto_add(npyscreen.TitleText, w_id="default_jobname", name = "Default Name", value=str(self.general_config.get("default_jobname", "")), comments="The default value of job name to appear during sapp job submission.")
+        self.auto_add(npyscreen.TitleText, w_id="default_clash", name = "Default Net", value=str(self.general_config.get("default_clash", "0")), comments="The default value of Clash service to appear during sapp job submission.")
+        self.auto_add(npyscreen.TitleText, w_id="default_time", name = "Default Time", value=str(self.general_config.get("default_time", "0-01:00:00")), comments="The default value of wall time to appear during sapp job submission.")
+        self.auto_add(npyscreen.TitleText, w_id="default_mail_user", name = "Default Email", value=str(self.general_config.get("default_mail_user", "")), comments="The default value of mail user to appear during sapp job submission. If empty, slurm will use the email of the current account.")
 
     def pre_edit_loop(self):
         super().pre_edit_loop()
