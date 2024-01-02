@@ -520,7 +520,7 @@ class Clash:
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
             # Since clash has been removed from github, we use a hidden repo.
-            url = 'https://github.com/Loyalsoldier/clash-rules/raw/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
+            url = 'https://raw.githubusercontent.com/Loyalsoldier/clash-rules/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
