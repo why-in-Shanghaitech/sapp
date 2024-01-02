@@ -19,13 +19,28 @@ class MuteTitleSelectOne(npyscreen.TitleMultiLine):
 class MenuForm(npyscreen.FormBaseNew):
 
     def __init__(self, name=None, parentApp=None, framed=None, help=None, color='FORMDEFAULT', widget_list=None, cycle_widgets=False, *args, **keywords):
+        card_list = parentApp.card_list
+        def avail_of(config: SlurmConfig) -> int:
+            partition = config.partition
+            gpu_type = config.gpu_type
+            gpu_count = max(1, config.num_gpus)
+            if partition not in card_list:
+                return 0
+            if gpu_type == 'Any Type':
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
+            else:
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
+        
         command = parentApp.command
         self.command = shlex.join(command) if isinstance(command, list) else command
         preview = "Run with the same setting as you last time use SAPP without a job name. A quick entry for fast job submission."
         if parentApp.database.recent:
-            preview = f"Preview: {' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier, parentApp.database.config))}" 
+            avail = avail_of(parentApp.database.recent.slurm_config)
+            preview = f"{' '.join(utils.get_command(parentApp.database.recent, 'srun', parentApp.database.identifier, parentApp.database.config))}" 
             if parentApp.database.recent.task in (1, 3):
-                preview = 'Preview: sbatch' + preview[13:]
+                preview = 'sbatch' + preview[4:]
+            preview = f"Preview ({avail}): " + preview
         self.options = [
             ("Execute with the most recent setting", preview),
             ("Select from pre-defined settings...", "Run with an existing setting. You may further specify the job name and more details."),
@@ -229,6 +244,16 @@ class SlurmConfigForm(FormMultiPageAction):
         card_list = self.card_list
         partitions = self.partitions
         cards = self.cards
+
+        def avail_of(partition: str, gpu_type: str = None, gpu_count: int = 1) -> int:
+            gpu_count = max(1, gpu_count)
+            if partition not in card_list:
+                return 0
+            if gpu_type is None:
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
+            else:
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
         
         self.auto_add(npyscreen.TitleText, w_id="name", value=self.slurm_config.name, name = "Name", comments="Config name. Only used by sapp. Later in sapp you may quickly select this config by its name.", editable=not self.freeze_name)
         self.auto_add(npyscreen.TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=10, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
@@ -237,21 +262,34 @@ class SlurmConfigForm(FormMultiPageAction):
         self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Always flush the outputs to console. Only useful for srun. Safe to leave it untouched.")
 
         height = max(2, min(len(partitions), max(5, self.lines-self.text.height-6)))
-        partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {sum(card_list[p].values())})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
+        partition_widget = self.auto_add(TitleSelectOne, w_id="partition", max_height=height, value=([0] if self.slurm_config.partition not in partitions else partitions.index(self.slurm_config.partition)), name="Partition", values = [f"{p} (Available: {avail_of(p)})" for p in partitions], scroll_exit=True, select_exit=True, comments="Request a specific partition for the resource allocation.")
 
         height = max(2, min(max(len(cards[p]) for p in partitions), max(5, self.lines-self.text.height-6)))
         p = partitions[partition_widget.value[0]]
-        gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
+        gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {avail_of(p)})"] + [f"{c} (Available: {avail_of(p, c)})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
 
         def when_value_edited():
             p = partitions[partition_widget.value[0]]
+            if p == when_value_edited.old_p:
+                return
+            when_value_edited.old_p = p
             gpu_type_widget.value = [0]
-            gpu_type_widget.values = [f"Any Type (Available: {sum(card_list[p].values())})"] + [f"{c} (Available: {card_list[p][c]})" for c in cards[p]]
+            gpu_type_widget.values = [f"Any Type (Available: {avail_of(p)})"] + [f"{c} (Available: {avail_of(p, c)})" for c in cards[p]]
             gpu_type_widget.update()
+        when_value_edited.old_p = None
         partition_widget.entry_widget.when_value_edited = when_value_edited
 
-        self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
-        self.auto_add(npyscreen.TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=32, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
+        num_gpu_widget = self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
+
+        def when_value_edited_gpu():
+            p = partitions[partition_widget.value[0]]
+            gpu_count = num_gpu_widget.value
+            partition_widget.values = [f"{p} (Available: {avail_of(p, gpu_count=gpu_count)})" for p in partitions]
+            gpu_type_widget.values = [f"Any Type (Available: {avail_of(p, gpu_count=gpu_count)})"] + [f"{c} (Available: {avail_of(p, c, gpu_count)})" for c in cards[p]]
+            self.display() # redraw the form so that no display problem
+        num_gpu_widget.entry_widget.when_value_edited = when_value_edited_gpu
+
+        self.auto_add(npyscreen.TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=128, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
         self.auto_add(npyscreen.TitleText, w_id="mem", value=self.slurm_config.mem, name = "Memory", comments="(Optional) Specify the real memory required per node. E.g. 40G.")
         self.auto_add(npyscreen.TitleText, w_id="other", value=self.slurm_config.other, name = "Other", comments="(Optional) Other command line arguments, such as '--exclude ai_gpu02,ai_gpu04'.")
     
@@ -280,13 +318,17 @@ class SlurmConfigForm(FormMultiPageAction):
             self.get_widget("disable_status").value = [0 if self.slurm_config.disable_status else 1]
             self.get_widget("unbuffered").value = [0 if self.slurm_config.unbuffered else 1]
             self.get_widget("partition").value = [self.partitions.index(self.slurm_config.partition)] if self.slurm_config.partition in self.partitions else [0]
-            self.get_widget("gpu_type").value = [0 if self.slurm_config.gpu_type == "Any Type" else (self.cards.get(self.slurm_config.partition, []).index(self.slurm_config.gpu_type) if self.slurm_config.gpu_type in self.cards.get(self.slurm_config.partition, []) else 0)]
+            self.get_widget("partition").update() # we must update early to get the correct gpu_type
+            self.get_widget("partition").entry_widget.when_value_edited() # update options for gpu_type
+            avail_cards = self.cards.get(self.slurm_config.partition, [])
+            self.get_widget("gpu_type").value = [0 if self.slurm_config.gpu_type == "Any Type" else ((avail_cards.index(self.slurm_config.gpu_type)+1) if self.slurm_config.gpu_type in avail_cards else 0)]
             self.get_widget("num_gpus").value = self.slurm_config.num_gpus
+            self.get_widget("num_gpus").entry_widget.when_value_edited() # update available cards
             self.get_widget("cpus_per_task").value = self.slurm_config.cpus_per_task
             self.get_widget("mem").value = self.slurm_config.mem
             self.get_widget("other").value = self.slurm_config.other
 
-            for key in ("name", "nodes", "ntasks", "disable_status", "unbuffered", "partition", "gpu_type", "num_gpus", "cpus_per_task", "mem", "other"):
+            for key in ("name", "nodes", "ntasks", "disable_status", "unbuffered", "gpu_type", "num_gpus", "cpus_per_task", "mem", "other"):
                 self.get_widget(key).update()
 
 class SelectConfigForm(npyscreen.ActionFormV2):
@@ -296,10 +338,14 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         def avail_of(config: SlurmConfig) -> int:
             partition = config.partition
             gpu_type = config.gpu_type
+            gpu_count = max(1, config.num_gpus)
+            if partition not in card_list:
+                return 0
             if gpu_type == 'Any Type':
-                return sum(card_list.get(partition, {}).values())
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
             else:
-                return card_list.get(partition, {}).get(gpu_type, 0)
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
 
         self.options = [
             (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
@@ -370,10 +416,14 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         def avail_of(config: SlurmConfig) -> int:
             partition = config.partition
             gpu_type = config.gpu_type
+            gpu_count = max(1, config.num_gpus)
+            if partition not in card_list:
+                return 0
             if gpu_type == 'Any Type':
-                return sum(card_list.get(partition, {}).values())
+                candidates = [value for gpu_type in card_list[partition] for value in card_list[partition][gpu_type]]
             else:
-                return card_list.get(partition, {}).get(gpu_type, 0)
+                candidates = card_list[partition].get(gpu_type, [])
+            return sum(int(value // gpu_count) for value in candidates)
         
         self.options = [
             (f"{s.name} (Available: {avail_of(s)})", f"Preview: {' '.join(utils.get_command(s, 'srun', general_config=parentApp.database.config))}") for s in parentApp.database.settings
@@ -487,6 +537,8 @@ class SubmitForm(FormMultiPageAction):
     OK_BUTTON_TEXT = 'Submit'
 
     def __init__(self, display_pages=True, pages_label_color='NORMAL', *args, **keywords):
+        self.parentApp = keywords["parentApp"]
+        self.general_config: dict = self.parentApp.database.config
         self.submit_config = SubmitConfig()
         super().__init__(display_pages, pages_label_color, *args, **keywords)
     
@@ -498,6 +550,9 @@ class SubmitForm(FormMultiPageAction):
         self.submit_config.jobname = self.get_widget("jobname").value
         self.submit_config.output = self.get_widget("output").value
         self.submit_config.error = self.get_widget("error").value
+        mail_type = self.get_widget("mail_type").value
+        self.submit_config.mail_type = [self.get_widget("mail_type").values[i] for i in mail_type] if mail_type else None
+        self.submit_config.mail_user = self.get_widget("mail_user").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -520,11 +575,14 @@ class SubmitForm(FormMultiPageAction):
         super().create("Submit the job to slurm.")
         
         task = self.auto_add(TitleSelectOne, w_id="task", max_height=4, value=[0], name="Task", values = ["Submit job with srun", "Submit job with sbatch", "Print srun command", "Print sbatch header"], scroll_exit=True, comments="Task to execute. (press arrow keys to show description)", select_exit=True)
-        self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", comments="(Optional) Job name for slurm. Will appear in squeue.")
-        clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value="0", comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
-        self.auto_add(npyscreen.TitleText, w_id="time", value="0-01:00:00", name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
+        self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", value=str(self.general_config.get("default_jobname", "")), comments="(Optional) Job name for slurm. Will appear in squeue.")
+        clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value=str(self.general_config.get("default_clash", "0")), comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
+        self.auto_add(npyscreen.TitleText, w_id="time", value=str(self.general_config.get("default_time", "0-01:00:00")), name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
         output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
         error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
+        height = min(max(2, self.lines-self.text.height-6), 4)
+        self.auto_add(TitleMultiSelect, w_id="mail_type", name = "Mail Type", scroll_exit=True, select_exit=True, max_height=height, values = ["NONE", "BEGIN", "END", "FAIL", "REQUEUE", "ALL", "INVALID_DEPEND", "STAGE_OUT", "TIME_LIMIT", "TIME_LIMIT_90", "TIME_LIMIT_80", "TIME_LIMIT_50", "ARRAY_TASKS"], comments="(Optional) Mail type, the time you want to receive email. See sbatch manual for details.")
+        self.auto_add(npyscreen.TitleText, w_id="mail_user", name = "Mail User", value = str(self.general_config.get("default_mail_user", "")), comments="(Optional) Mail address to send the mail to. Leave it blank to send to your email address.")
 
         def when_value_edited():
             database: Database = self.parentApp.database
@@ -570,6 +628,10 @@ class GeneralConfigForm(FormMultiPageAction):
         self.general_config["log_space"] = int(self.get_widget("log_space").value)
         self.general_config["gpu"] = self.get_widget("gpu").value == [1]
         self.general_config["cache"] = self.get_widget("cache").value == [0]
+        self.general_config["default_jobname"] = self.get_widget("default_jobname").value
+        self.general_config["default_clash"] = self.get_widget("default_clash").value
+        self.general_config["default_time"] = self.get_widget("default_time").value
+        self.general_config["default_mail_user"] = self.get_widget("default_mail_user").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -585,6 +647,10 @@ class GeneralConfigForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleText, w_id="log_space", name = "Log Space", value=str(self.general_config.get("log_space", 200)), comments="Number of logs to keep. By default at ~/.config/sapp. Too small value may lead to task failure. 0 for unlimited.")
         self.auto_add(TitleSelectOne, w_id="gpu", max_height=2, value=[1 if self.general_config.get("gpu", False) else 0], name="GRES", values = ["Submit using --gres=gpu:<type>:<num>", "Submit using --gpus=<type>:<num>"], scroll_exit=True, comments="How to specify the gpu requirement.", select_exit=True)
         self.auto_add(TitleSelectOne, w_id="cache", max_height=2, value=[0 if self.general_config.get("cache", True) else 1], name="Cache", values = ["Cache files in the commands and use independent environment", "Do not cache and submit the file when job is allocated"], scroll_exit=True, comments="Whether to cache the files. This allows you change the files right after submission, no need to wait for allocation.", select_exit=True)
+        self.auto_add(npyscreen.TitleText, w_id="default_jobname", name = "Default Name", value=str(self.general_config.get("default_jobname", "")), comments="The default value of job name to appear during sapp job submission.")
+        self.auto_add(npyscreen.TitleText, w_id="default_clash", name = "Default Net", value=str(self.general_config.get("default_clash", "0")), comments="The default value of Clash service to appear during sapp job submission.")
+        self.auto_add(npyscreen.TitleText, w_id="default_time", name = "Default Time", value=str(self.general_config.get("default_time", "0-01:00:00")), comments="The default value of wall time to appear during sapp job submission.")
+        self.auto_add(npyscreen.TitleText, w_id="default_mail_user", name = "Default Email", value=str(self.general_config.get("default_mail_user", "")), comments="The default value of mail user to appear during sapp job submission. If empty, slurm will use the email of the current account.")
 
     def pre_edit_loop(self):
         super().pre_edit_loop()

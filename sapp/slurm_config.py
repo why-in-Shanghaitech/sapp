@@ -123,6 +123,21 @@ class SubmitConfig:
             "help": "(Optional) The stderr filename. use %j for job id and %x for job name. You may want to leave it blank for srun."
         }
     )
+    mail_type: Optional[List[str]] = field(
+        default=None,
+        metadata={
+            "help": "(Optional) Specify the type of mail notification requested.",
+            "options": [
+                "NONE", "BEGIN", "END", "FAIL", "REQUEUE", "ALL", "INVALID_DEPEND", "STAGE_OUT", "TIME_LIMIT", "TIME_LIMIT_90", "TIME_LIMIT_80", "TIME_LIMIT_50", "ARRAY_TASKS"
+            ]
+        }
+    )
+    mail_user: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "(Optional) Specify the email address to send notification to."
+        }
+    )
     task: int = field(
         default=None,
         metadata={
@@ -415,6 +430,8 @@ class utils:
                 if config.output: args += ["-o", utils.resolve_identifier(config.output, identifier)]
                 if config.error: args += ["-e", utils.resolve_identifier(config.error, identifier)]
                 if config.jobname: args += ["-J", config.jobname]
+                if config.mail_type: args += ["--mail-type", ",".join(config.mail_type)]
+                if config.mail_user: args += ["--mail-user", config.mail_user]
 
         elif tp == 'sbatch':
             args += ["#!/usr/bin/bash"]
@@ -435,6 +452,8 @@ class utils:
                 if config.output: args += [f"#SBATCH -o {utils.resolve_identifier(config.output, identifier)}"]
                 if config.error: args += [f"#SBATCH -e {utils.resolve_identifier(config.error, identifier)}"]
                 if config.jobname: args += [f"#SBATCH -J {config.jobname}"]
+                if config.mail_type: args += [f"#SBATCH --mail-type {','.join(config.mail_type)}"]
+                if config.mail_user: args += [f"#SBATCH --mail-user {config.mail_user}"]
         
         return args
 
@@ -501,7 +520,7 @@ class Clash:
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
             # Since clash has been removed from github, we use a hidden repo.
-            url = 'https://github.com/Loyalsoldier/clash-rules/raw/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
+            url = 'https://raw.githubusercontent.com/Loyalsoldier/clash-rules/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024

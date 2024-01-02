@@ -51,8 +51,8 @@ def get_card_list():
     e.g.
     {
         "debug": {
-            "NVIDIAA40": 1,
-            "NVIDIATITANRTX": 0
+            "NVIDIAA40": [1, 0, 0],
+            "NVIDIATITANRTX": [0, 0]
         }
     }
     """
@@ -68,13 +68,13 @@ def get_card_list():
     ## Step 2: get the gpu status for each partition
     resources = {}
     for partition in partitions:
-        part_status = defaultdict(int)
-        response = run_cammand(['sinfo', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition, '--noheader'])
+        part_status = defaultdict(list)
+        response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition, '--noheader'])
         for line in response.split('\n'):
             parse = parse_gres_line(line)
             if parse is not None:
                 gpu, avail = parse
-                part_status[gpu] += avail
+                part_status[gpu].append(avail)
         resources[partition] = part_status
     
     return resources
