@@ -512,15 +512,15 @@ class Clash:
         Return the path to the clash executable. Download if not found.
         """
 
-        exec_path = self.exec_folder / "clash-linux-amd64"
+        exec_path = self.exec_folder / "mihomo-v1.18.1"
 
         if not exec_path.exists(): # download and cache
 
             print("Preparing web environment. Please wait, it could take a few minutes...")
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
-            # Since clash has been removed from github, we use a hidden repo.
-            url = 'https://raw.githubusercontent.com/Loyalsoldier/clash-rules/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
+            # Use mihomo to support more protocols
+            url = "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz"
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
@@ -536,20 +536,20 @@ class Clash:
             
             exec_path.chmod(mode = 484) # rwxr--r--
 
-        mmdb_path = self.exec_folder / "clash" / "Country.mmdb"
+        mmdb_path = self.exec_folder / "mihomo" / "geoip.metadb"
 
         if not mmdb_path.exists():
 
             mmdb_path.parent.mkdir(parents=True, exist_ok=True)
 
             # use fastly instead of cdn
-            url = "https://fastly.jsdelivr.net/gh/Dreamacro/maxmind-geoip@release/Country.mmdb"
+            url = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
             with tempfile.TemporaryFile("w+b") as tmp:
                 # download to tmp dir
-                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download Country.mmdb", total=total, unit='KB', leave=False):
+                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download geoip", total=total, unit='KB', leave=False):
                     if chunk:
                         tmp.write(chunk)
                 tmp.seek(0)
@@ -558,7 +558,7 @@ class Clash:
                     f.write(tmp.read())
         
         # prepare for custom usage of clash
-        default_mmdb_path = Path("~/.config/clash/Country.mmdb").expanduser()
+        default_mmdb_path = Path("~/.config/mihomo/geoip.metadb").expanduser()
 
         if not default_mmdb_path.exists():
             default_mmdb_path.parent.mkdir(parents=True, exist_ok=True)
@@ -611,7 +611,7 @@ class Clash:
                     port = freeport.port
 
                     ## Step 2. Initialize the config file
-                    config_folder = self.exec_folder / "clash"
+                    config_folder = self.exec_folder / "mihomo"
                     config_folder.mkdir(parents=True, exist_ok=True)
 
                     with open(config_folder / "config.yaml", 'w') as f:
