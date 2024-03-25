@@ -400,6 +400,28 @@ class utils:
     @staticmethod
     def resolve_identifier(s: str, identifier: str = None):
         return s.replace("%i", identifier) if identifier is not None else s
+    
+    @staticmethod
+    def parse_arguments(s: str) -> List[str]:
+        """
+        Parse the arguments into different lines for sbatch use.
+        """
+        args = shlex.split(s)
+        lines = []
+        curr = []
+        for arg in args:
+            if arg.startswith("-") and len(arg) == 2 or \
+                arg.startswith("--") and len(arg) > 2:
+                if curr:
+                    lines.append(shlex.join(curr))
+                    curr = [arg]
+                else:
+                    curr.append(arg)
+            else:
+                curr.append(arg)
+        if curr:
+            lines.append(shlex.join(curr))
+        return lines
 
     @staticmethod
     def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identifier: str = None, general_config: dict = None):
@@ -445,7 +467,9 @@ class utils:
                 args += [f"#SBATCH {gpu_argname}{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
             args += [f"#SBATCH -c {slurm_config.cpus_per_task}"]
             if slurm_config.mem: args += [f"#SBATCH --mem {slurm_config.mem}"]
-            if slurm_config.other: args += [f"#SBATCH {slurm_config.other}"] # TODO: what about multiple arguments?
+            if slurm_config.other:
+                for line in utils.parse_arguments(slurm_config.other):
+                    args += [f"#SBATCH {line}"]
 
             if isinstance(config, SubmitConfig):
                 args += [f"#SBATCH -t {config.time}"]
