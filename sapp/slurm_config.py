@@ -260,16 +260,38 @@ class Database:
 
             if config.task == 0:
 
+                # get_service may block the process, resolve file first
+                resolved_command = resolve_files(command)
+
+                # create folder for this job
+                # it should have been created in resolve_files, but we do it here for safety
+                shell_folder = self.base_path / self.identifier
+                shell_folder.mkdir(parents=True, exist_ok=True)
+                # the shell script
+                shell_path = shell_folder / "script.sh"
+
+                # save the job info
+                jobid_path = str((shell_folder / "SLURM_JOB_ID").absolute())
+                hostname_path = str((shell_folder / "HOSTNAME").absolute())
+
                 if config.clash == -1:
 
-                    args += resolve_files(command)
+                    # write the shell script
+                    with open(shell_path, 'w') as f:
+                        print("#!/usr/bin/bash", file = f)
+                        print("", file = f)
+                        print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
+                        print(f'hostname > {shlex.join([hostname_path])}', file = f)
+                        print(shlex.join(resolved_command), file = f)
+                    
+                    # set env vars for tqdm
                     utils.set_screen_shape()
+
+                    # add commands
+                    args += ["bash", str(shell_path)]
                     os.system(shlex.join(args))
 
                 elif config.clash == 0:
-
-                    # get_service may block the process, resolve file first
-                    resolved_command = resolve_files(command)
 
                     # init clash
                     clash = Clash()
@@ -277,18 +299,16 @@ class Database:
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
                     # write the shell script
-                    shell_folder = self.base_path / self.identifier
-                    shell_folder.mkdir(parents=True, exist_ok=True)
-                    shell_path = shell_folder / "script.sh"
-
                     with open(shell_path, 'w') as f:
                         print("#!/usr/bin/bash", file = f)
                         print("", file = f)
                         print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
                         print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
-                        print(shlex.join(clash.get_ssh_command(port, tgt_port)), file=f)
-                        print("sleep 1", file=f)
-                        print(shlex.join(resolved_command), file=f)
+                        print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
+                        print(f'hostname > {shlex.join([hostname_path])}', file = f)
+                        print(shlex.join(clash.get_ssh_command(port, tgt_port)), file = f)
+                        print("sleep 1", file = f)
+                        print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
                     utils.set_screen_shape()
@@ -305,19 +325,16 @@ class Database:
                     clash = Clash()
                     tgt_port = random.randint(30000, 40000)
 
-                    # write the shell script
-                    shell_folder = self.base_path / self.identifier
-                    shell_folder.mkdir(parents=True, exist_ok=True)
-                    shell_path = shell_folder / "script.sh"
-
                     with open(shell_path, 'w') as f:
                         print("#!/usr/bin/bash", file = f)
                         print("", file = f)
                         print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
                         print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
-                        print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file=f)
-                        print("sleep 1", file=f)
-                        print(shlex.join(resolve_files(command)), file=f)
+                        print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
+                        print(f'hostname > {shlex.join([hostname_path])}', file = f)
+                        print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file = f)
+                        print("sleep 1", file = f)
+                        print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
                     utils.set_screen_shape()
@@ -337,14 +354,25 @@ class Database:
 
             if config.task == 1:
 
+                # get_service may block the process, resolve file first
+                resolved_command = resolve_files(command)
+
+                # create folder for this job
+                # it should have been created in resolve_files, but we do it here for safety
+                shell_folder = self.base_path / self.identifier
+                shell_folder.mkdir(parents=True, exist_ok=True)
+                    
+                # save the job info
+                jobid_path = str((shell_folder / "SLURM_JOB_ID").absolute())
+                hostname_path = str((shell_folder / "HOSTNAME").absolute())
+
                 if config.clash == -1:
 
-                    args += [shlex.join(resolve_files(command))]
+                    args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
+                    args += [f'hostname > {shlex.join([hostname_path])}']
+                    args += [shlex.join(resolved_command)]
 
                 elif config.clash == 0:
-
-                    # get_service may block the process, resolve file first
-                    resolved_command = resolve_files(command)
 
                     # init clash
                     clash = Clash()
@@ -354,6 +382,8 @@ class Database:
 
                     args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
+                    args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
                     args += ["sleep 1"]
                     args += [shlex.join(resolved_command)]
@@ -367,13 +397,13 @@ class Database:
 
                     args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
+                    args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(config.clash, tgt_port))]
                     args += ["sleep 1"]
-                    args += [shlex.join(resolve_files(command))]
+                    args += [shlex.join(resolved_command)]
                 
                 # write the shell script
-                shell_folder = self.base_path / self.identifier
-                shell_folder.mkdir(parents=True, exist_ok=True)
                 shell_path = shell_folder / "script.sh"
 
                 with open(shell_path, 'w') as f:
