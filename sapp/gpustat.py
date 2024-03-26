@@ -14,11 +14,21 @@ def run_cammand(cmd, retry = 1):
 
 def parse_gres_line(line):
     """Parse the gresused line."""
+    # filter out empty lines
+    if line.strip() == '':
+        return None
+    
+    # parse the line
     # XXX: this is not an elegent solution (cannot cover edge cases). it might
     #      be better to turn to 3rd party python slurm packages.
     status = line[:10].strip()
     gres = line[10:40].strip()
     gres_used = line[40:90].strip()
+    nodelist = line[90:120].strip()
+    cpus = line[120:140].strip()
+    free_mem = line[140:152].strip()
+    alloc_mem = line[152:164].strip()
+    total_mem = line[164:176].strip()
 
     # we do not consider drain nodes
     if status not in ['idle', 'mix', 'alloc']:
@@ -34,47 +44,88 @@ def parse_gres_line(line):
     if gres_match is None or gres_used_match is None:
         return None
 
-    gpu = gres_match.group(1)
-    avail = int(gres_match.group(2))
-    used = int(gres_used_match.group(2))
+    gpu_type = gres_match.group(1)
+    gpu_total = int(gres_match.group(2))
+    gpu_used = int(gres_used_match.group(2))
+    gpu_avail = gpu_total - gpu_used
 
     # the gpu type is not specified
-    if gpu == '(null)' or gpu == '':
-        gpu = 'Unknown GPU Type'
+    if gpu_type == '(null)' or gpu_type == '':
+        gpu_type = 'Unknown_GPU_Type'
 
-    return gpu, avail - used
+    # rule out invalid cpu info
+    if cpus.count('/') != 3:
+        return None
+    cpu_avail = int(cpus.split('/')[1])
+
+    # XXX: I am not sure if the memory that is available to be allocated could be calculated in this way.
+    mem_avail = int(total_mem) - int(alloc_mem)
+
+    return gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail
 
 def get_card_list():
     """
     Return a dict with the key as partitions and the values as the availibility of the cards.
+    The unit of the memory is MB.
 
     e.g.
     {
         "debug": {
-            "NVIDIAA40": [1, 0, 0],
-            "NVIDIATITANRTX": [0, 0]
+            "NVIDIAA40": [
+                {
+                    "nodelist": "ai_gpu01",
+                    "gpu": 1,
+                    "cpu": 10,
+                    "mem": 359477
+                },
+                {
+                    "nodelist": "ai_gpu02",
+                    "gpu": 0,
+                    "cpu": 2,
+                    "mem": 427480
+                },
+                {
+                    "nodelist": "ai_gpu03",
+                    "gpu": 2,
+                    "cpu": 10,
+                    "mem": 217510
+                }
+            ],
+            "NVIDIATITANRTX": [
+                {
+                    "nodelist": "ai_gpu30",
+                    "gpu": 4,
+                    "cpu": 48,
+                    "mem": 385415
+                }
+            ]
         }
     }
     """
     ## Step 1: get all the partitions
-    response = run_cammand(['sinfo', '-O', 'PartitionName'])
+    response = run_cammand(['sinfo', '-O', 'PartitionName', '--noheader'])
 
     partitions = []
     for line in response.split('\n'):
         line = line.strip()
-        if line not in ("", "PARTITION"):
+        if line != '':
             partitions.append(line)
     
     ## Step 2: get the gpu status for each partition
     resources = {}
     for partition in partitions:
         part_status = defaultdict(list)
-        response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50', '-p', partition, '--noheader'])
+        response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.12,AllocMem:.12,Memory:.12', '-p', partition, '--noheader'])
         for line in response.split('\n'):
             parse = parse_gres_line(line)
             if parse is not None:
-                gpu, avail = parse
-                part_status[gpu].append(avail)
+                gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail = parse
+                part_status[gpu_type].append({
+                    "nodelist": nodelist,
+                    "gpu": gpu_avail,
+                    "cpu": cpu_avail,
+                    "mem": mem_avail
+                })
         resources[partition] = part_status
     
     return resources

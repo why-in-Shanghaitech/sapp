@@ -260,16 +260,38 @@ class Database:
 
             if config.task == 0:
 
+                # get_service may block the process, resolve file first
+                resolved_command = resolve_files(command)
+
+                # create folder for this job
+                # it should have been created in resolve_files, but we do it here for safety
+                shell_folder = self.base_path / self.identifier
+                shell_folder.mkdir(parents=True, exist_ok=True)
+                # the shell script
+                shell_path = shell_folder / "script.sh"
+
+                # save the job info
+                jobid_path = str((shell_folder / "SLURM_JOB_ID").absolute())
+                hostname_path = str((shell_folder / "HOSTNAME").absolute())
+
                 if config.clash == -1:
 
-                    args += resolve_files(command)
+                    # write the shell script
+                    with open(shell_path, 'w') as f:
+                        print("#!/usr/bin/bash", file = f)
+                        print("", file = f)
+                        print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
+                        print(f'hostname > {shlex.join([hostname_path])}', file = f)
+                        print(shlex.join(resolved_command), file = f)
+                    
+                    # set env vars for tqdm
                     utils.set_screen_shape()
+
+                    # add commands
+                    args += ["bash", str(shell_path)]
                     os.system(shlex.join(args))
 
                 elif config.clash == 0:
-
-                    # get_service may block the process, resolve file first
-                    resolved_command = resolve_files(command)
 
                     # init clash
                     clash = Clash()
@@ -277,18 +299,16 @@ class Database:
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
                     # write the shell script
-                    shell_folder = self.base_path / self.identifier
-                    shell_folder.mkdir(parents=True, exist_ok=True)
-                    shell_path = shell_folder / "script.sh"
-
                     with open(shell_path, 'w') as f:
                         print("#!/usr/bin/bash", file = f)
                         print("", file = f)
                         print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
                         print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
-                        print(shlex.join(clash.get_ssh_command(port, tgt_port)), file=f)
-                        print("sleep 1", file=f)
-                        print(shlex.join(resolved_command), file=f)
+                        print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
+                        print(f'hostname > {shlex.join([hostname_path])}', file = f)
+                        print(shlex.join(clash.get_ssh_command(port, tgt_port)), file = f)
+                        print("sleep 1", file = f)
+                        print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
                     utils.set_screen_shape()
@@ -305,19 +325,16 @@ class Database:
                     clash = Clash()
                     tgt_port = random.randint(30000, 40000)
 
-                    # write the shell script
-                    shell_folder = self.base_path / self.identifier
-                    shell_folder.mkdir(parents=True, exist_ok=True)
-                    shell_path = shell_folder / "script.sh"
-
                     with open(shell_path, 'w') as f:
                         print("#!/usr/bin/bash", file = f)
                         print("", file = f)
                         print(f"export http_proxy=http://127.0.0.1:{tgt_port}", file = f)
                         print(f"export https_proxy=http://127.0.0.1:{tgt_port}", file = f)
-                        print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file=f)
-                        print("sleep 1", file=f)
-                        print(shlex.join(resolve_files(command)), file=f)
+                        print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
+                        print(f'hostname > {shlex.join([hostname_path])}', file = f)
+                        print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file = f)
+                        print("sleep 1", file = f)
+                        print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
                     utils.set_screen_shape()
@@ -337,14 +354,25 @@ class Database:
 
             if config.task == 1:
 
+                # get_service may block the process, resolve file first
+                resolved_command = resolve_files(command)
+
+                # create folder for this job
+                # it should have been created in resolve_files, but we do it here for safety
+                shell_folder = self.base_path / self.identifier
+                shell_folder.mkdir(parents=True, exist_ok=True)
+                    
+                # save the job info
+                jobid_path = str((shell_folder / "SLURM_JOB_ID").absolute())
+                hostname_path = str((shell_folder / "HOSTNAME").absolute())
+
                 if config.clash == -1:
 
-                    args += [shlex.join(resolve_files(command))]
+                    args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
+                    args += [f'hostname > {shlex.join([hostname_path])}']
+                    args += [shlex.join(resolved_command)]
 
                 elif config.clash == 0:
-
-                    # get_service may block the process, resolve file first
-                    resolved_command = resolve_files(command)
 
                     # init clash
                     clash = Clash()
@@ -354,6 +382,8 @@ class Database:
 
                     args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
+                    args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
                     args += ["sleep 1"]
                     args += [shlex.join(resolved_command)]
@@ -367,13 +397,13 @@ class Database:
 
                     args += [f"export http_proxy=http://127.0.0.1:{tgt_port}"]
                     args += [f"export https_proxy=http://127.0.0.1:{tgt_port}"]
+                    args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
+                    args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(config.clash, tgt_port))]
                     args += ["sleep 1"]
-                    args += [shlex.join(resolve_files(command))]
+                    args += [shlex.join(resolved_command)]
                 
                 # write the shell script
-                shell_folder = self.base_path / self.identifier
-                shell_folder.mkdir(parents=True, exist_ok=True)
                 shell_path = shell_folder / "script.sh"
 
                 with open(shell_path, 'w') as f:
@@ -400,6 +430,28 @@ class utils:
     @staticmethod
     def resolve_identifier(s: str, identifier: str = None):
         return s.replace("%i", identifier) if identifier is not None else s
+    
+    @staticmethod
+    def parse_arguments(s: str) -> List[str]:
+        """
+        Parse the arguments into different lines for sbatch use.
+        """
+        args = shlex.split(s)
+        lines = []
+        curr = []
+        for arg in args:
+            if arg.startswith("-") and len(arg) == 2 or \
+                arg.startswith("--") and len(arg) > 2:
+                if curr:
+                    lines.append(shlex.join(curr))
+                    curr = [arg]
+                else:
+                    curr.append(arg)
+            else:
+                curr.append(arg)
+        if curr:
+            lines.append(shlex.join(curr))
+        return lines
 
     @staticmethod
     def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identifier: str = None, general_config: dict = None):
@@ -445,7 +497,9 @@ class utils:
                 args += [f"#SBATCH {gpu_argname}{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
             args += [f"#SBATCH -c {slurm_config.cpus_per_task}"]
             if slurm_config.mem: args += [f"#SBATCH --mem {slurm_config.mem}"]
-            if slurm_config.other: args += [f"#SBATCH {slurm_config.other}"] # TODO: what about multiple arguments?
+            if slurm_config.other:
+                for line in utils.parse_arguments(slurm_config.other):
+                    args += [f"#SBATCH {line}"]
 
             if isinstance(config, SubmitConfig):
                 args += [f"#SBATCH -t {config.time}"]
@@ -512,15 +566,15 @@ class Clash:
         Return the path to the clash executable. Download if not found.
         """
 
-        exec_path = self.exec_folder / "clash-linux-amd64"
+        exec_path = self.exec_folder / "mihomo-v1.18.1"
 
         if not exec_path.exists(): # download and cache
 
             print("Preparing web environment. Please wait, it could take a few minutes...")
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
-            # Since clash has been removed from github, we use a hidden repo.
-            url = 'https://raw.githubusercontent.com/Loyalsoldier/clash-rules/hidden/software/clash/clash-linux-amd64-v1.18.0.gz'
+            # Use mihomo to support more protocols
+            url = "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz"
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
@@ -536,20 +590,20 @@ class Clash:
             
             exec_path.chmod(mode = 484) # rwxr--r--
 
-        mmdb_path = self.exec_folder / "clash" / "Country.mmdb"
+        mmdb_path = self.exec_folder / "mihomo" / "geoip.metadb"
 
         if not mmdb_path.exists():
 
             mmdb_path.parent.mkdir(parents=True, exist_ok=True)
 
             # use fastly instead of cdn
-            url = "https://fastly.jsdelivr.net/gh/Dreamacro/maxmind-geoip@release/Country.mmdb"
+            url = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
 
             r = requests.get(url, stream = True)
             total = int(r.headers.get('Content-Length', 0)) // 1024
             with tempfile.TemporaryFile("w+b") as tmp:
                 # download to tmp dir
-                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download Country.mmdb", total=total, unit='KB', leave=False):
+                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download geoip", total=total, unit='KB', leave=False):
                     if chunk:
                         tmp.write(chunk)
                 tmp.seek(0)
@@ -558,7 +612,7 @@ class Clash:
                     f.write(tmp.read())
         
         # prepare for custom usage of clash
-        default_mmdb_path = Path("~/.config/clash/Country.mmdb").expanduser()
+        default_mmdb_path = Path("~/.config/mihomo/geoip.metadb").expanduser()
 
         if not default_mmdb_path.exists():
             default_mmdb_path.parent.mkdir(parents=True, exist_ok=True)
@@ -611,7 +665,7 @@ class Clash:
                     port = freeport.port
 
                     ## Step 2. Initialize the config file
-                    config_folder = self.exec_folder / "clash"
+                    config_folder = self.exec_folder / "mihomo"
                     config_folder.mkdir(parents=True, exist_ok=True)
 
                     with open(config_folder / "config.yaml", 'w') as f:
