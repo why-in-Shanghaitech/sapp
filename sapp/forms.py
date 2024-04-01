@@ -326,7 +326,7 @@ class SlurmConfigForm(FormMultiPageAction):
             return {
                 'gpu': int(num_gpu_widget.value),
                 'cpu': int(num_cpu_widget.value),
-                'mem': num_mem_widget.value
+                'mem': str(num_mem_widget.value)
             }
 
         def when_value_edited():
