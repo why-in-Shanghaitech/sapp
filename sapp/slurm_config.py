@@ -11,6 +11,9 @@ from datetime import datetime
 import warnings
 import requests
 import socket
+import pexpect
+import pyotp
+import time
 import gzip, tempfile
 from tqdm import tqdm
 from .filelock import FileLock
@@ -793,8 +796,59 @@ class Clash:
         self.prepare_ssh_env()
         private_key = self.exec_folder / 'id_rsa'
         host_name, login_name = socket.gethostname(), os.getlogin()
-        command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-i", str(private_key)]
+        ssh_command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-i", str(private_key)]
+        ssh_command = shlex.join(ssh_command)
+        command = ["python", "-c", f'from sapp.slurm_config import Clash; Clash.ssh_port_forwarding("{ssh_command}")']
         return command
+    
+    @staticmethod
+    def ssh_port_forwarding(ssh_command: str) -> None:
+        """
+        Do port forwarding on the compute node to the login node.
+        This function should only be called on the compute node.
+        Starting from sapp 0.4.5, ssh port forwarding is done through python codes to support password and otp login.
+        XXX: Is there a better way to do this? For example, using paramiko.
+        TODO: Add support for password login.
+        """
+        process = pexpect.spawn(ssh_command, timeout=5) # TODO: allow user to control the timeout
+        expect_list = [
+            "Verification code: ",
+            pexpect.EOF,
+            pexpect.TIMEOUT,
+        ]
+
+        while True:
+            i = process.expect(expect_list)
+            if i == 0:
+                # try to get the verification code through secret key
+                secret_key = None
+
+                ## 1. TODO: find the secret key from sapp config
+                pass
+
+                ## 2. find the secret key from .google_authenticator
+                if not secret_key:
+                    path_to_totp = Path("~/.google_authenticator").expanduser()
+                    if path_to_totp.is_file():
+                        with open(path_to_totp, 'r') as f:
+                            # the first line is the secret key
+                            secret_key = f.readline().strip()
+
+                if not secret_key:
+                    raise ValueError("SSH port forwarding requires a verification code. Please set up the secret key in the general settings of SAPP.")
+                
+                # generate the verification code
+                totp = pyotp.TOTP(secret_key)
+
+                # do not respond too fast
+                time.sleep(0.1)
+                process.sendline(str(totp.now()))
+            elif i == 1:
+                break
+            elif i == 2:
+                raise TimeoutError("Timeout when doing ssh port forwarding.")
+        
+        process.wait()
 
 
     @staticmethod

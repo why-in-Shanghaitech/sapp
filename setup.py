@@ -17,7 +17,9 @@ setup(
     install_requires=[
         'npyscreen>=4.10.5',
         'requests',
-        'tqdm'
+        'tqdm',
+        'pexpect',
+        'pyotp'
     ],
     python_requires='>=3.8',
     entry_points={
