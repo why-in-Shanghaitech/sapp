@@ -51,7 +51,7 @@ def parse_gres_line(line):
 
     # the gpu type is not specified
     if gpu_type == '(null)' or gpu_type == '':
-        gpu_type = 'Unknown_GPU_Type'
+        gpu_type = 'Unknown GPU Type'
 
     # rule out invalid cpu info
     if cpus.count('/') != 3:
