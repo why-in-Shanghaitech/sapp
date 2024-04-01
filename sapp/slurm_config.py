@@ -310,7 +310,6 @@ class Database:
                         print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
                         print(f'hostname > {shlex.join([hostname_path])}', file = f)
                         print(shlex.join(clash.get_ssh_command(port, tgt_port)), file = f)
-                        print("sleep 1", file = f)
                         print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
@@ -336,7 +335,6 @@ class Database:
                         print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
                         print(f'hostname > {shlex.join([hostname_path])}', file = f)
                         print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file = f)
-                        print("sleep 1", file = f)
                         print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
@@ -388,7 +386,6 @@ class Database:
                     args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
                     args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
-                    args += ["sleep 1"]
                     args += [shlex.join(resolved_command)]
                     args += [shlex.join(['python', '-c', f'from sapp.slurm_config import Clash; Clash.release_service_compute("{self.identifier}", "{host_name}", "{login_name}")'])] # release
 
@@ -403,7 +400,6 @@ class Database:
                     args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
                     args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(config.clash, tgt_port))]
-                    args += ["sleep 1"]
                     args += [shlex.join(resolved_command)]
                 
                 # write the shell script
