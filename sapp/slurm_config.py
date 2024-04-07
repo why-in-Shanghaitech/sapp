@@ -852,7 +852,9 @@ class Clash:
         XXX: Is there a better way to do this? For example, using paramiko.
         TODO: Add support for password login.
         """
-        process = pexpect.spawn(ssh_command, timeout=5) # TODO: allow user to control the timeout
+        timeout = 30  # TODO: allow user to control the timeout
+
+        process = pexpect.spawn(ssh_command, timeout=1) # a fake timeout to avoid blocking
         expect_list = [
             "Verification code: ",
             "password: ",
@@ -913,7 +915,10 @@ class Clash:
                 break
 
             elif i == 3:
-                raise TimeoutError("Timeout when doing ssh port forwarding.")
+                timeout -= 1
+                if timeout <= 0:
+                    process.kill(9)
+                    raise TimeoutError("Timeout when doing ssh port forwarding.")
         
         process.wait()
 
