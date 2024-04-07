@@ -721,7 +721,7 @@ class Clash:
                     status["jobs"].remove(identifier)
 
                     # double check squeue is not empty
-                    r = os.popen("squeue --noheader" if utils.get_slurm_version() < (20,) else "squeue --noheader --me")
+                    r = os.popen(f'squeue --noheader {"" if utils.get_slurm_version() < (20,) else "--me "}-o "%.18i %.2t"')
                     result = r.read()
                     r.close()
 
@@ -730,7 +730,7 @@ class Clash:
                     for line in result.split('\n'):
                         if line.strip() == "":
                             continue
-                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                        if len(line) >= 21 and line[18:21].strip() == 'CG':
                             continue
                         is_empty = False
 
@@ -899,7 +899,7 @@ class Clash:
                     status["jobs"].remove(identifier)
 
                     # double check squeue is not empty
-                    r = os.popen("squeue --noheader" if utils.get_slurm_version() < (20,) else "squeue --noheader --me")
+                    r = os.popen(f'squeue --noheader {"" if utils.get_slurm_version() < (20,) else "--me "}-o "%.18i %.2t"')
                     result = r.read()
                     r.close()
 
@@ -911,7 +911,7 @@ class Clash:
                             continue
                         if len(line) > 18 and line[:18].strip() == this_jobid:
                             continue
-                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                        if len(line) >= 21 and line[18:21].strip() == 'CG':
                             continue
                         is_empty = False
 
