@@ -802,15 +802,15 @@ class Clash:
         host_name, login_name = socket.gethostname(), os.getlogin()
         ssh_command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-i", str(private_key)]
         ssh_command = shlex.join(ssh_command)
-        command = ["python", "-c", f'from sapp.slurm_config import Clash; Clash.ssh_port_forwarding("{ssh_command}")']
+        command = ["python", "-c", f'from sapp.slurm_config import Clash; Clash.ssh_login("{ssh_command}")']
         return command
     
     @staticmethod
-    def ssh_port_forwarding(ssh_command: str) -> None:
+    def ssh_login(ssh_command: str) -> None:
         """
-        Do port forwarding on the compute node to the login node.
+        Do ssh login (e.g. for port forwarding) on the compute node to the login node.
         This function should only be called on the compute node.
-        Starting from sapp 0.4.5, ssh port forwarding is done through python codes to support password and otp login.
+        Starting from sapp 0.4.5, ssh login is done through python codes to support password and otp login.
         XXX: Is there a better way to do this? For example, using paramiko.
         TODO: Add support for password login.
         """
@@ -923,7 +923,7 @@ class Clash:
                         # shut down service
                         private_key = exec_folder / 'id_rsa'
                         command = ["ssh", "-o", "StrictHostKeyChecking=no", f"{login_name}@{host_name}", "-i", str(private_key), "kill", "-9", str(status["pid"])]
-                        os.system(shlex.join(command)) # have to wait till finish, which will introduce an overhead.
+                        cls.ssh_login(shlex.join(command)) # have to wait till finish, which will introduce an overhead.
                         
                         with open(logger, "w") as f:
                             data.pop(key)
