@@ -550,6 +550,51 @@ class utils:
         version = r.read().strip()
         r.close()
         return tuple(map(int, version.split()[1].split('.')))
+    
+    @staticmethod
+    def download_file(
+        url: List[str],
+        path: Union[str, Path],
+        desc: str = None,
+        write_callback = None,
+    ):
+        """
+        Download a file from the internet. If the file already exists, it will skip the download.
+        If the url is blocked, then try the next one.
+
+        write_callback should be a function with the source and target file descriptors as input.
+        """
+        if not isinstance(url, list):
+            url = [url]
+        
+        if isinstance(path, str):
+            path = Path(path)
+        
+        if path.exists():
+            return
+
+        for idx, u in enumerate(url):
+            try:
+                r = requests.get(u, stream = True)
+                total = int(r.headers.get('Content-Length', 0)) // 1024
+                with tempfile.TemporaryFile("w+b") as tmp:
+                    # download to tmp dir
+                    for chunk in tqdm(r.iter_content(chunk_size = 1024), desc=desc, total=total, unit='KB', leave=False):
+                        if chunk:
+                            tmp.write(chunk)
+                    tmp.seek(0)
+                    # move to home
+                    with open(path, "wb") as f:
+                        if write_callback:
+                            write_callback(tmp, f)
+                        else:
+                            f.write(tmp.read())
+                break
+            except requests.exceptions.RequestException:
+                print(f"Failed to download {u}. Retrying ({idx + 1}/{len(url)})...")
+        else:
+            raise requests.exceptions.RequestException("All urls are blocked.")
+
 
 class Clash:
 
@@ -581,19 +626,16 @@ class Clash:
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
             # Use mihomo to support more protocols
-            url = "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz"
-
-            r = requests.get(url, stream = True)
-            total = int(r.headers.get('Content-Length', 0)) // 1024
-            with tempfile.TemporaryFile("w+b") as tmp:
-                # download to tmp dir
-                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download Clash", total=total, unit='KB', leave=False):
-                    if chunk:
-                        tmp.write(chunk)
-                tmp.seek(0)
-                # move to home
-                with open(exec_path, "wb") as f:
-                    f.write(gzip.decompress(tmp.read()))
+            utils.download_file(
+                url = [
+                    "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz",
+                    "https://mirror.ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz",
+                    "https://gitee.com/jiang-zhida/mihomo/releases/download/v1.16.0/clash.meta-linux-amd64-v1.16.0.gz" # the version on gitee is older
+                ],
+                path = exec_path,
+                desc = "Download Clash",
+                write_callback = lambda src, tgt: tgt.write(gzip.decompress(src.read()))
+            )
             
             exec_path.chmod(mode = 484) # rwxr--r--
 
@@ -604,19 +646,15 @@ class Clash:
             mmdb_path.parent.mkdir(parents=True, exist_ok=True)
 
             # use fastly instead of cdn
-            url = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
-
-            r = requests.get(url, stream = True)
-            total = int(r.headers.get('Content-Length', 0)) // 1024
-            with tempfile.TemporaryFile("w+b") as tmp:
-                # download to tmp dir
-                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download geoip", total=total, unit='KB', leave=False):
-                    if chunk:
-                        tmp.write(chunk)
-                tmp.seek(0)
-                # move to home
-                with open(mmdb_path, "wb") as f:
-                    f.write(tmp.read())
+            utils.download_file(
+                url = [
+                    "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb",
+                    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
+                    "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
+                ],
+                path = mmdb_path,
+                desc = "Download geoip"
+            )
         
         # prepare for custom usage of clash
         default_mmdb_path = Path("~/.config/mihomo/geoip.metadb").expanduser()
