@@ -855,6 +855,7 @@ class Clash:
         process = pexpect.spawn(ssh_command, timeout=5) # TODO: allow user to control the timeout
         expect_list = [
             "Verification code: ",
+            "password: ",
             pexpect.EOF,
             pexpect.TIMEOUT,
         ]
@@ -865,8 +866,12 @@ class Clash:
                 # try to get the verification code through secret key
                 secret_key = None
 
-                ## 1. TODO: find the secret key from sapp config
-                pass
+                ## 1. find the secret key from sapp config
+                if not secret_key:
+                    database = Database()
+                    key = database.config.get("otp_secret", "")
+                    if isinstance(key, str) and key.strip() != "":
+                        secret_key = key.strip()
 
                 ## 2. find the secret key from .google_authenticator
                 if not secret_key:
@@ -885,9 +890,29 @@ class Clash:
                 # do not respond too fast
                 time.sleep(0.1)
                 process.sendline(str(totp.now()))
+
             elif i == 1:
-                break
+                # try to get the password
+                password = None
+
+                ## 1. find the password from sapp config
+                if not password:
+                    database = Database()
+                    key = database.config.get("passwd", "")
+                    if isinstance(key, str) and key.strip() != "":
+                        password = key.strip()
+
+                if not password:
+                    raise ValueError("SSH port forwarding requires a password. Please set up the password in the general settings of SAPP.")
+                
+                # do not respond too fast
+                time.sleep(0.1)
+                process.sendline(password)
+
             elif i == 2:
+                break
+
+            elif i == 3:
                 raise TimeoutError("Timeout when doing ssh port forwarding.")
         
         process.wait()

@@ -679,6 +679,8 @@ class GeneralConfigForm(FormMultiPageAction):
         self.general_config["default_clash"] = self.get_widget("default_clash").value
         self.general_config["default_time"] = self.get_widget("default_time").value
         self.general_config["default_mail_user"] = self.get_widget("default_mail_user").value
+        self.general_config["otp_secret"] = self.get_widget("otp_secret").value
+        self.general_config["passwd"] = self.get_widget("passwd").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -698,6 +700,9 @@ class GeneralConfigForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleText, w_id="default_clash", name = "Default Net", value=str(self.general_config.get("default_clash", "0")), comments="The default value of Clash service to appear during sapp job submission.")
         self.auto_add(npyscreen.TitleText, w_id="default_time", name = "Default Time", value=str(self.general_config.get("default_time", "0-01:00:00")), comments="The default value of wall time to appear during sapp job submission.")
         self.auto_add(npyscreen.TitleText, w_id="default_mail_user", name = "Default Email", value=str(self.general_config.get("default_mail_user", "")), comments="The default value of mail user to appear during sapp job submission. If empty, slurm will use the email of the current account.")
+
+        self.auto_add(npyscreen.TitleText, w_id="otp_secret", name = "OTP Secret", value=str(self.general_config.get("otp_secret", "")), comments="The secret key for one-time password. Only required if two-factor authentication is enabled. Usually stored in ~/.google_authenticator. Example: 'HDE2Z4T6HDE2Z4T6'.")
+        self.auto_add(npyscreen.TitleText, w_id="passwd", name = "Password", value=str(self.general_config.get("passwd", "")), comments="The password for the current account for SSH login. Only required if the admin does not allow passwordless login.")
 
     def pre_edit_loop(self):
         super().pre_edit_loop()
