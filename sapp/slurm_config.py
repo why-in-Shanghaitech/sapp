@@ -850,7 +850,6 @@ class Clash:
         This function should only be called on the compute node.
         Starting from sapp 0.4.5, ssh login is done through python codes to support password and otp login.
         XXX: Is there a better way to do this? For example, using paramiko.
-        TODO: Add support for password login.
         """
         timeout = 30  # TODO: allow user to control the timeout
 
