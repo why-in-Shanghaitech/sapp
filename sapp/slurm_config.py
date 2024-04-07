@@ -899,7 +899,7 @@ class Clash:
                     status["jobs"].remove(identifier)
 
                     # double check squeue is not empty
-                    r = os.popen("squeue --noheader")
+                    r = os.popen("squeue --noheader" if utils.get_slurm_version() < (20,) else "squeue --noheader --me")
                     result = r.read()
                     r.close()
 
