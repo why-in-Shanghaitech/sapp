@@ -3,6 +3,7 @@
 
 import npyscreen
 import shlex
+from dataclasses import replace
 from .slurm_config import SlurmConfig, SubmitConfig, Database, utils
 from .gpustat import get_card_list
 
@@ -381,7 +382,9 @@ class SlurmConfigForm(FormMultiPageAction):
             self.get_widget("num_gpus").value = self.slurm_config.num_gpus
             self.get_widget("num_gpus").entry_widget.when_value_edited() # update available cards
             self.get_widget("cpus_per_task").value = self.slurm_config.cpus_per_task
+            self.get_widget("cpus_per_task").entry_widget.when_value_edited() # update available cpus
             self.get_widget("mem").value = self.slurm_config.mem
+            self.get_widget("mem").entry_widget.when_value_edited() # update available mem
             self.get_widget("other").value = self.slurm_config.other
 
             for key in ("name", "nodes", "ntasks", "disable_status", "unbuffered", "gpu_type", "num_gpus", "cpus_per_task", "mem", "other"):
@@ -483,10 +486,20 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
                 slurm_config = self.parentApp.database.settings[self.field.value[0] - 1]
         else:
             slurm_config = self.parentApp.database.settings[self.field.value[0]]
+
+        # get a copy to avoid in-place modification
+        slurm_config = replace(slurm_config)
+
+        # if we do not want to save the change, we freeze the name field
+        freeze_name = False
+        if self.parentApp.getForm('MAIN').field.value[0] == 4:
+            freeze_name = True
+
         # write to submit config
         self.parentApp.getForm('new_config').update(
             slurm_config,
-            greetings = "Edit the slurm config."
+            greetings = "Edit the slurm config.",
+            freeze_name = freeze_name
         )
 
         # proceed to submission
