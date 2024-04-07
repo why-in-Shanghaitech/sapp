@@ -542,6 +542,14 @@ class utils:
 
         if isinstance(rows, int):
             os.environ.setdefault("LINES", str(rows + 1))
+    
+    @staticmethod
+    def get_slurm_version() -> Tuple[int, int, int]:
+        """Get the version of slurm installed."""
+        r = os.popen("sinfo --version")
+        version = r.read().strip()
+        r.close()
+        return tuple(map(int, version.split()[1].split('.')))
 
 class Clash:
 
@@ -713,7 +721,7 @@ class Clash:
                     status["jobs"].remove(identifier)
 
                     # double check squeue is not empty
-                    r = os.popen("squeue --noheader")
+                    r = os.popen("squeue --noheader" if utils.get_slurm_version() < (20,) else "squeue --noheader --me")
                     result = r.read()
                     r.close()
 
