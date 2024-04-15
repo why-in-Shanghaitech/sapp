@@ -681,6 +681,7 @@ class GeneralConfigForm(FormMultiPageAction):
         self.general_config["default_mail_user"] = self.get_widget("default_mail_user").value
         self.general_config["otp_secret"] = self.get_widget("otp_secret").value
         self.general_config["passwd"] = self.get_widget("passwd").value
+        self.general_config["clash_config_file"] = self.get_widget("clash_config_file").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -703,6 +704,8 @@ class GeneralConfigForm(FormMultiPageAction):
 
         self.auto_add(npyscreen.TitleText, w_id="otp_secret", name = "OTP Secret", value=str(self.general_config.get("otp_secret", "")), comments="The secret key for one-time password. Only required if two-factor authentication is enabled. Usually stored in ~/.google_authenticator. Example: 'HDE2Z4T6HDE2Z4T6'.")
         self.auto_add(npyscreen.TitleText, w_id="passwd", name = "Password", value=str(self.general_config.get("passwd", "")), comments="The password for the current account for SSH login. Only required if the admin does not allow passwordless login.")
+
+        self.auto_add(npyscreen.TitleFilenameCombo, w_id="clash_config_file", name = "Clash Config", value=self.general_config.get("clash_config_file", None), comments="The path to the clash config (.yaml) file that you want sapp to use by default (when setting Internet as 0).")
 
     def pre_edit_loop(self):
         super().pre_edit_loop()

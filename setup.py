@@ -19,7 +19,8 @@ setup(
         'requests',
         'tqdm',
         'pexpect',
-        'pyotp'
+        'pyotp',
+        'pyyaml'
     ],
     python_requires='>=3.8',
     entry_points={

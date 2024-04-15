@@ -13,6 +13,7 @@ import requests
 import socket
 import pexpect
 import pyotp
+import yaml
 import time
 import gzip, tempfile
 from tqdm import tqdm
@@ -298,7 +299,7 @@ class Database:
 
                     # init clash
                     clash = Clash()
-                    pid, port = clash.get_service(self.identifier)
+                    pid, port = clash.get_service(self.identifier, self.config.get("clash_config_file", None))
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
                     # write the shell script
@@ -377,7 +378,7 @@ class Database:
 
                     # init clash
                     clash = Clash()
-                    pid, port = clash.get_service(self.identifier)
+                    pid, port = clash.get_service(self.identifier, self.config.get("clash_config_file", None))
                     host_name, login_name = socket.gethostname(), os.getlogin()
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
@@ -666,7 +667,7 @@ class Clash:
         return exec_path
     
     
-    def get_service(self, identifier: str) -> Tuple[int, int]:
+    def get_service(self, identifier: str, config_path: str = None) -> Tuple[int, int]:
         """
         Return a clash service with a tuple (pid, port).
         Register the current application.
@@ -713,8 +714,38 @@ class Clash:
                     config_folder = self.exec_folder / "mihomo"
                     config_folder.mkdir(parents=True, exist_ok=True)
 
-                    with open(config_folder / "config.yaml", 'w') as f:
-                        print(f"mixed-port: {port}", file=f)
+                    if config_path is None or config_path == "":
+
+                        # write an empty config file
+                        with open(config_folder / "config.yaml", 'w') as f:
+                            print(f"mixed-port: {port}", file=f)
+                    
+                    else:
+
+                        # check if the config file exists
+                        config_path = Path(config_path).expanduser()
+                        if not config_path.exists():
+                            raise FileNotFoundError(f"Config file {config_path} does not exist. Please fix it in the general settings.")
+
+                        # read from the config file
+                        with open(config_path, 'r') as f:
+                            clash_config = yaml.safe_load(f)
+                        
+                        # properly set the port
+                        if 'port' in clash_config:
+                            del clash_config['port']
+                        if 'socks-port' in clash_config:
+                            del clash_config['socks-port']
+                        if 'redir-port' in clash_config:
+                            del clash_config['redir-port']
+                        if 'tproxy-port' in clash_config:
+                            del clash_config['tproxy-port']
+
+                        clash_config['mixed-port'] = int(port)
+
+                        # write to the config file
+                        with open(config_folder / "config.yaml", 'w') as f:
+                            yaml.dump(clash_config, f)
                     
                     ## Step 3. Start service
                     pid = self.runbg(['nohup', str(self.executable), "-d", str(config_folder)])
