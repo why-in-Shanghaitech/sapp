@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
  
 setup(
     name='sapp',
-    version='0.4.4.dev0',
+    version='0.4.4.dev2',
     description='Command helper for slurm system. Act as if you are on compute node.',
     url="https://github.com/why-in-Shanghaitech/sapp",
     author='Haoyi Wu',
@@ -17,7 +17,10 @@ setup(
     install_requires=[
         'npyscreen>=4.10.5',
         'requests',
-        'tqdm'
+        'tqdm',
+        'pexpect',
+        'pyotp',
+        'pyyaml'
     ],
     python_requires='>=3.8',
     entry_points={

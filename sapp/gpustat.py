@@ -26,9 +26,10 @@ def parse_gres_line(line):
     gres_used = line[40:90].strip()
     nodelist = line[90:120].strip()
     cpus = line[120:140].strip()
-    free_mem = line[140:152].strip()
-    alloc_mem = line[152:164].strip()
-    total_mem = line[164:176].strip()
+    free_mem = line[140:155].strip()
+    alloc_mem = line[155:170].strip()
+    total_mem = line[170:185].strip()
+    partition = line[185:].strip()
 
     # we do not consider drain nodes
     if status not in ['idle', 'mix', 'alloc']:
@@ -51,7 +52,7 @@ def parse_gres_line(line):
 
     # the gpu type is not specified
     if gpu_type == '(null)' or gpu_type == '':
-        gpu_type = 'Unknown_GPU_Type'
+        gpu_type = 'Unknown GPU Type'
 
     # rule out invalid cpu info
     if cpus.count('/') != 3:
@@ -61,7 +62,7 @@ def parse_gres_line(line):
     # XXX: I am not sure if the memory that is available to be allocated could be calculated in this way.
     mem_avail = int(total_mem) - int(alloc_mem)
 
-    return gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail
+    return gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail, partition
 
 def get_card_list():
     """
@@ -102,31 +103,19 @@ def get_card_list():
         }
     }
     """
-    ## Step 1: get all the partitions
-    response = run_cammand(['sinfo', '-O', 'PartitionName', '--noheader'])
+    response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.15,AllocMem:.15,Memory:.15,PartitionName:.50', '--noheader'])
 
-    partitions = []
+    resources = defaultdict(dict)
     for line in response.split('\n'):
-        line = line.strip()
-        if line != '':
-            partitions.append(line)
-    
-    ## Step 2: get the gpu status for each partition
-    resources = {}
-    for partition in partitions:
-        part_status = defaultdict(list)
-        response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.12,AllocMem:.12,Memory:.12', '-p', partition, '--noheader'])
-        for line in response.split('\n'):
-            parse = parse_gres_line(line)
-            if parse is not None:
-                gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail = parse
-                part_status[gpu_type].append({
-                    "nodelist": nodelist,
-                    "gpu": gpu_avail,
-                    "cpu": cpu_avail,
-                    "mem": mem_avail
-                })
-        resources[partition] = part_status
+        parse = parse_gres_line(line)
+        if parse is not None:
+            gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail, partition = parse
+            resources[partition].setdefault(gpu_type, []).append({
+                "nodelist": nodelist,
+                "gpu": gpu_avail,
+                "cpu": cpu_avail,
+                "mem": mem_avail
+            })
     
     return resources
 

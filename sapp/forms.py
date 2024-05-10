@@ -3,6 +3,7 @@
 
 import npyscreen
 import shlex
+from dataclasses import replace
 from .slurm_config import SlurmConfig, SubmitConfig, Database, utils
 from .gpustat import get_card_list
 
@@ -68,6 +69,15 @@ def avail_of(config: SlurmConfig, card_list: dict) -> int:
         candidates = [node for node in card_list[partition].get(gpu_type, [])]
     return sum(satisfy(req, node) for node in candidates)
 
+
+class Slider(npyscreen.Slider):
+    def h_increase(self, ch):
+        if (self.value + self.step >= self.out_of):
+            self.out_of += self.step
+        self.value += self.step
+
+class TitleSlider(npyscreen.TitleText):
+    _entry_type = Slider
 
 class MuteRoundCheckBox(npyscreen.RoundCheckBox):
     False_box = ' - '
@@ -305,8 +315,8 @@ class SlurmConfigForm(FormMultiPageAction):
             return sum(satisfy(req, node) for node in candidates)
         
         self.auto_add(npyscreen.TitleText, w_id="name", value=self.slurm_config.name, name = "Name", comments="Config name. Only used by sapp. Later in sapp you may quickly select this config by its name.", editable=not self.freeze_name)
-        self.auto_add(npyscreen.TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=10, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
-        self.auto_add(npyscreen.TitleSlider, w_id="ntasks", value=self.slurm_config.ntasks, lowest=1, out_of=10, name = "# tasks", comments="Specify the number of tasks to run. Do not change unless you know its meaning.")
+        self.auto_add(TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=8, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
+        self.auto_add(TitleSlider, w_id="ntasks", value=self.slurm_config.ntasks, lowest=1, out_of=8, name = "# tasks", comments="Specify the number of tasks to run. Do not change unless you know its meaning.")
         self.auto_add(TitleSelectOne, w_id="disable_status", max_height=2, value=(not self.slurm_config.disable_status), name="Ctrl-C", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Disable the display of task status when srun receives a single SIGINT (Ctrl-C). Safe to leave it untouched.")
         self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Always flush the outputs to console. Only useful for srun. Safe to leave it untouched.")
 
@@ -317,8 +327,8 @@ class SlurmConfigForm(FormMultiPageAction):
         p = partitions[partition_widget.value[0]]
         gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {avail_of(p)})"] + [f"{c} (Available: {avail_of(p, c)})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
 
-        num_gpu_widget = self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
-        num_cpu_widget = self.auto_add(npyscreen.TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=128, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
+        num_gpu_widget = self.auto_add(TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=8, name = "# gpus", comments="Number of GPUs to request.")
+        num_cpu_widget = self.auto_add(TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=64, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
         num_mem_widget = self.auto_add(npyscreen.TitleText, w_id="mem", value=self.slurm_config.mem, name = "Memory", comments="(Optional) Specify the real memory required per node. E.g. 40G.")
         self.auto_add(npyscreen.TitleText, w_id="other", value=self.slurm_config.other, name = "Other", comments="(Optional) Other command line arguments, such as '-A tukw-critical --exclude ai_gpu02,ai_gpu04'.")
 
@@ -326,7 +336,7 @@ class SlurmConfigForm(FormMultiPageAction):
             return {
                 'gpu': int(num_gpu_widget.value),
                 'cpu': int(num_cpu_widget.value),
-                'mem': num_mem_widget.value
+                'mem': str(num_mem_widget.value)
             }
 
         def when_value_edited():
@@ -381,7 +391,9 @@ class SlurmConfigForm(FormMultiPageAction):
             self.get_widget("num_gpus").value = self.slurm_config.num_gpus
             self.get_widget("num_gpus").entry_widget.when_value_edited() # update available cards
             self.get_widget("cpus_per_task").value = self.slurm_config.cpus_per_task
+            self.get_widget("cpus_per_task").entry_widget.when_value_edited() # update available cpus
             self.get_widget("mem").value = self.slurm_config.mem
+            self.get_widget("mem").entry_widget.when_value_edited() # update available mem
             self.get_widget("other").value = self.slurm_config.other
 
             for key in ("name", "nodes", "ntasks", "disable_status", "unbuffered", "gpu_type", "num_gpus", "cpus_per_task", "mem", "other"):
@@ -483,10 +495,20 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
                 slurm_config = self.parentApp.database.settings[self.field.value[0] - 1]
         else:
             slurm_config = self.parentApp.database.settings[self.field.value[0]]
+
+        # get a copy to avoid in-place modification
+        slurm_config = replace(slurm_config)
+
+        # if we do not want to save the change, we freeze the name field
+        freeze_name = False
+        if self.parentApp.getForm('MAIN').field.value[0] == 4:
+            freeze_name = True
+
         # write to submit config
         self.parentApp.getForm('new_config').update(
             slurm_config,
-            greetings = "Edit the slurm config."
+            greetings = "Edit the slurm config.",
+            freeze_name = freeze_name
         )
 
         # proceed to submission
@@ -666,6 +688,9 @@ class GeneralConfigForm(FormMultiPageAction):
         self.general_config["default_clash"] = self.get_widget("default_clash").value
         self.general_config["default_time"] = self.get_widget("default_time").value
         self.general_config["default_mail_user"] = self.get_widget("default_mail_user").value
+        self.general_config["otp_secret"] = self.get_widget("otp_secret").value
+        self.general_config["passwd"] = self.get_widget("passwd").value
+        self.general_config["clash_config_file"] = self.get_widget("clash_config_file").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
@@ -685,6 +710,11 @@ class GeneralConfigForm(FormMultiPageAction):
         self.auto_add(npyscreen.TitleText, w_id="default_clash", name = "Default Net", value=str(self.general_config.get("default_clash", "0")), comments="The default value of Clash service to appear during sapp job submission.")
         self.auto_add(npyscreen.TitleText, w_id="default_time", name = "Default Time", value=str(self.general_config.get("default_time", "0-01:00:00")), comments="The default value of wall time to appear during sapp job submission.")
         self.auto_add(npyscreen.TitleText, w_id="default_mail_user", name = "Default Email", value=str(self.general_config.get("default_mail_user", "")), comments="The default value of mail user to appear during sapp job submission. If empty, slurm will use the email of the current account.")
+
+        self.auto_add(npyscreen.TitleText, w_id="otp_secret", name = "OTP Secret", value=str(self.general_config.get("otp_secret", "")), comments="The secret key for one-time password. Only required if two-factor authentication is enabled. Usually stored in ~/.google_authenticator. Example: 'HDE2Z4T6HDE2Z4T6'.")
+        self.auto_add(npyscreen.TitleText, w_id="passwd", name = "Password", value=str(self.general_config.get("passwd", "")), comments="The password for the current account for SSH login. Only required if the admin does not allow passwordless login.")
+
+        self.auto_add(npyscreen.TitleFilenameCombo, w_id="clash_config_file", name = "Clash Config", value=self.general_config.get("clash_config_file", None), comments="The path to the clash config (.yaml) file that you want sapp to use by default (when setting Internet as 0).")
 
     def pre_edit_loop(self):
         super().pre_edit_loop()
