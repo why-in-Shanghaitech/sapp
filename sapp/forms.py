@@ -70,6 +70,15 @@ def avail_of(config: SlurmConfig, card_list: dict) -> int:
     return sum(satisfy(req, node) for node in candidates)
 
 
+class Slider(npyscreen.Slider):
+    def h_increase(self, ch):
+        if (self.value + self.step >= self.out_of):
+            self.out_of += self.step
+        self.value += self.step
+
+class TitleSlider(npyscreen.TitleText):
+    _entry_type = Slider
+
 class MuteRoundCheckBox(npyscreen.RoundCheckBox):
     False_box = ' - '
     True_box  = ' - '
@@ -306,8 +315,8 @@ class SlurmConfigForm(FormMultiPageAction):
             return sum(satisfy(req, node) for node in candidates)
         
         self.auto_add(npyscreen.TitleText, w_id="name", value=self.slurm_config.name, name = "Name", comments="Config name. Only used by sapp. Later in sapp you may quickly select this config by its name.", editable=not self.freeze_name)
-        self.auto_add(npyscreen.TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=10, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
-        self.auto_add(npyscreen.TitleSlider, w_id="ntasks", value=self.slurm_config.ntasks, lowest=1, out_of=10, name = "# tasks", comments="Specify the number of tasks to run. Do not change unless you know its meaning.")
+        self.auto_add(TitleSlider, w_id="nodes", value=self.slurm_config.nodes, lowest=1, out_of=8, name = "Nodes", comments="Request that a minimum of minnodes nodes be allocated to this job. Do not change unless you know its meaning.")
+        self.auto_add(TitleSlider, w_id="ntasks", value=self.slurm_config.ntasks, lowest=1, out_of=8, name = "# tasks", comments="Specify the number of tasks to run. Do not change unless you know its meaning.")
         self.auto_add(TitleSelectOne, w_id="disable_status", max_height=2, value=(not self.slurm_config.disable_status), name="Ctrl-C", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Disable the display of task status when srun receives a single SIGINT (Ctrl-C). Safe to leave it untouched.")
         self.auto_add(TitleSelectOne, w_id="unbuffered", max_height=2, value=(not self.slurm_config.unbuffered), name="Unbuffered", values = ["Yes", "No"], scroll_exit=True, select_exit=True, comments="Always flush the outputs to console. Only useful for srun. Safe to leave it untouched.")
 
@@ -318,8 +327,8 @@ class SlurmConfigForm(FormMultiPageAction):
         p = partitions[partition_widget.value[0]]
         gpu_type_widget = self.auto_add(TitleSelectOne, w_id="gpu_type", max_height=height, value=([0] if self.slurm_config.gpu_type not in cards[p] else [cards[p].index(self.slurm_config.gpu_type) + 1]), name="GPU Type", values = [f"Any Type (Available: {avail_of(p)})"] + [f"{c} (Available: {avail_of(p, c)})" for c in cards[p]], scroll_exit=True, select_exit=True, comments="GPU type for allocation.")
 
-        num_gpu_widget = self.auto_add(npyscreen.TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=16, name = "# gpus", comments="Number of GPUs to request.")
-        num_cpu_widget = self.auto_add(npyscreen.TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=256, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
+        num_gpu_widget = self.auto_add(TitleSlider, w_id="num_gpus", value=self.slurm_config.num_gpus, lowest=0, out_of=8, name = "# gpus", comments="Number of GPUs to request.")
+        num_cpu_widget = self.auto_add(TitleSlider, w_id="cpus_per_task", value=self.slurm_config.cpus_per_task, lowest=1, out_of=64, name = "# cpus per task", comments="Request that ncpus be allocated per process. This may be useful if the job is multithreaded.")
         num_mem_widget = self.auto_add(npyscreen.TitleText, w_id="mem", value=self.slurm_config.mem, name = "Memory", comments="(Optional) Specify the real memory required per node. E.g. 40G.")
         self.auto_add(npyscreen.TitleText, w_id="other", value=self.slurm_config.other, name = "Other", comments="(Optional) Other command line arguments, such as '-A tukw-critical --exclude ai_gpu02,ai_gpu04'.")
 
