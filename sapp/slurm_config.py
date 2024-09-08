@@ -11,6 +11,10 @@ from datetime import datetime
 import warnings
 import requests
 import socket
+import pexpect
+import pyotp
+import yaml
+import time
 import gzip, tempfile
 from tqdm import tqdm
 from .filelock import FileLock
@@ -295,7 +299,7 @@ class Database:
 
                     # init clash
                     clash = Clash()
-                    pid, port = clash.get_service(self.identifier)
+                    pid, port = clash.get_service(self.identifier, self.config.get("clash_config_file", None))
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
                     # write the shell script
@@ -307,7 +311,6 @@ class Database:
                         print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
                         print(f'hostname > {shlex.join([hostname_path])}', file = f)
                         print(shlex.join(clash.get_ssh_command(port, tgt_port)), file = f)
-                        print("sleep 1", file = f)
                         print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
@@ -333,7 +336,6 @@ class Database:
                         print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
                         print(f'hostname > {shlex.join([hostname_path])}', file = f)
                         print(shlex.join(clash.get_ssh_command(config.clash, tgt_port)), file = f)
-                        print("sleep 1", file = f)
                         print(shlex.join(resolved_command), file = f)
                     
                     # set env vars for tqdm
@@ -376,7 +378,7 @@ class Database:
 
                     # init clash
                     clash = Clash()
-                    pid, port = clash.get_service(self.identifier)
+                    pid, port = clash.get_service(self.identifier, self.config.get("clash_config_file", None))
                     host_name, login_name = socket.gethostname(), os.getlogin()
                     tgt_port = random.randint(30000, 40000) # impossible to find free port on compute node
 
@@ -385,7 +387,6 @@ class Database:
                     args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
                     args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(port, tgt_port))]
-                    args += ["sleep 1"]
                     args += [shlex.join(resolved_command)]
                     args += [shlex.join(['python', '-c', f'from sapp.slurm_config import Clash; Clash.release_service_compute("{self.identifier}", "{host_name}", "{login_name}")'])] # release
 
@@ -400,7 +401,6 @@ class Database:
                     args += [f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}']
                     args += [f'hostname > {shlex.join([hostname_path])}']
                     args += [shlex.join(clash.get_ssh_command(config.clash, tgt_port))]
-                    args += ["sleep 1"]
                     args += [shlex.join(resolved_command)]
                 
                 # write the shell script
@@ -543,6 +543,59 @@ class utils:
 
         if isinstance(rows, int):
             os.environ.setdefault("LINES", str(rows + 1))
+    
+    @staticmethod
+    def get_slurm_version() -> Tuple[int, int, int]:
+        """Get the version of slurm installed."""
+        r = os.popen("sinfo --version")
+        version = r.read().strip()
+        r.close()
+        return tuple(map(int, version.split()[1].split('.')))
+    
+    @staticmethod
+    def download_file(
+        url: List[str],
+        path: Union[str, Path],
+        desc: str = None,
+        write_callback = None,
+    ):
+        """
+        Download a file from the internet. If the file already exists, it will skip the download.
+        If the url is blocked, then try the next one.
+
+        write_callback should be a function with the source and target file descriptors as input.
+        """
+        if not isinstance(url, list):
+            url = [url]
+        
+        if isinstance(path, str):
+            path = Path(path)
+        
+        if path.exists():
+            return
+
+        for idx, u in enumerate(url):
+            try:
+                r = requests.get(u, stream = True)
+                total = int(r.headers.get('Content-Length', 0)) // 1024
+                with tempfile.TemporaryFile("w+b") as tmp:
+                    # download to tmp dir
+                    for chunk in tqdm(r.iter_content(chunk_size = 1024), desc=desc, total=total, unit='KB', leave=False):
+                        if chunk:
+                            tmp.write(chunk)
+                    tmp.seek(0)
+                    # move to home
+                    with open(path, "wb") as f:
+                        if write_callback:
+                            write_callback(tmp, f)
+                        else:
+                            f.write(tmp.read())
+                break
+            except requests.exceptions.RequestException:
+                print(f"Failed to download {u}. Retrying ({idx + 1}/{len(url)})...")
+        else:
+            raise requests.exceptions.RequestException("All urls are blocked.")
+
 
 class Clash:
 
@@ -574,19 +627,16 @@ class Clash:
             self.exec_folder.mkdir(parents=True, exist_ok=True)
 
             # Use mihomo to support more protocols
-            url = "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz"
-
-            r = requests.get(url, stream = True)
-            total = int(r.headers.get('Content-Length', 0)) // 1024
-            with tempfile.TemporaryFile("w+b") as tmp:
-                # download to tmp dir
-                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download Clash", total=total, unit='KB', leave=False):
-                    if chunk:
-                        tmp.write(chunk)
-                tmp.seek(0)
-                # move to home
-                with open(exec_path, "wb") as f:
-                    f.write(gzip.decompress(tmp.read()))
+            utils.download_file(
+                url = [
+                    "https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz",
+                    "https://mirror.ghproxy.com/https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz",
+                    "https://gitee.com/jiang-zhida/mihomo/releases/download/v1.16.0/clash.meta-linux-amd64-v1.16.0.gz" # the version on gitee is older
+                ],
+                path = exec_path,
+                desc = "Download Clash",
+                write_callback = lambda src, tgt: tgt.write(gzip.decompress(src.read()))
+            )
             
             exec_path.chmod(mode = 484) # rwxr--r--
 
@@ -597,19 +647,15 @@ class Clash:
             mmdb_path.parent.mkdir(parents=True, exist_ok=True)
 
             # use fastly instead of cdn
-            url = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
-
-            r = requests.get(url, stream = True)
-            total = int(r.headers.get('Content-Length', 0)) // 1024
-            with tempfile.TemporaryFile("w+b") as tmp:
-                # download to tmp dir
-                for chunk in tqdm(r.iter_content(chunk_size = 1024), desc="Download geoip", total=total, unit='KB', leave=False):
-                    if chunk:
-                        tmp.write(chunk)
-                tmp.seek(0)
-                # move to home
-                with open(mmdb_path, "wb") as f:
-                    f.write(tmp.read())
+            utils.download_file(
+                url = [
+                    "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb",
+                    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
+                    "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.metadb"
+                ],
+                path = mmdb_path,
+                desc = "Download geoip"
+            )
         
         # prepare for custom usage of clash
         default_mmdb_path = Path("~/.config/mihomo/geoip.metadb").expanduser()
@@ -621,7 +667,7 @@ class Clash:
         return exec_path
     
     
-    def get_service(self, identifier: str) -> Tuple[int, int]:
+    def get_service(self, identifier: str, config_path: str = None) -> Tuple[int, int]:
         """
         Return a clash service with a tuple (pid, port).
         Register the current application.
@@ -668,8 +714,38 @@ class Clash:
                     config_folder = self.exec_folder / "mihomo"
                     config_folder.mkdir(parents=True, exist_ok=True)
 
-                    with open(config_folder / "config.yaml", 'w') as f:
-                        print(f"mixed-port: {port}", file=f)
+                    if config_path is None or config_path == "":
+
+                        # write an empty config file
+                        with open(config_folder / "config.yaml", 'w') as f:
+                            print(f"mixed-port: {port}", file=f)
+                    
+                    else:
+
+                        # check if the config file exists
+                        config_path = Path(config_path).expanduser()
+                        if not config_path.exists():
+                            raise FileNotFoundError(f"Config file {config_path} does not exist. Please fix it in the general settings.")
+
+                        # read from the config file
+                        with open(config_path, 'r') as f:
+                            clash_config = yaml.safe_load(f)
+                        
+                        # properly set the port
+                        if 'port' in clash_config:
+                            del clash_config['port']
+                        if 'socks-port' in clash_config:
+                            del clash_config['socks-port']
+                        if 'redir-port' in clash_config:
+                            del clash_config['redir-port']
+                        if 'tproxy-port' in clash_config:
+                            del clash_config['tproxy-port']
+
+                        clash_config['mixed-port'] = int(port)
+
+                        # write to the config file
+                        with open(config_folder / "config.yaml", 'w') as f:
+                            yaml.dump(clash_config, f)
                     
                     ## Step 3. Start service
                     pid = self.runbg(['nohup', str(self.executable), "-d", str(config_folder)])
@@ -714,7 +790,7 @@ class Clash:
                     status["jobs"].remove(identifier)
 
                     # double check squeue is not empty
-                    r = os.popen("squeue --noheader")
+                    r = os.popen(f'squeue --noheader {"" if utils.get_slurm_version() < (20,) else "--me "}-o "%.18i %.2t"')
                     result = r.read()
                     r.close()
 
@@ -723,7 +799,7 @@ class Clash:
                     for line in result.split('\n'):
                         if line.strip() == "":
                             continue
-                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                        if len(line) >= 21 and line[18:21].strip() == 'CG':
                             continue
                         is_empty = False
 
@@ -793,8 +869,88 @@ class Clash:
         self.prepare_ssh_env()
         private_key = self.exec_folder / 'id_rsa'
         host_name, login_name = socket.gethostname(), os.getlogin()
-        command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-i", str(private_key)]
+        ssh_command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-i", str(private_key)]
+        ssh_command = shlex.join(ssh_command)
+        command = ["python", "-c", f'from sapp.slurm_config import Clash; Clash.ssh_login("{ssh_command}")']
         return command
+    
+    @staticmethod
+    def ssh_login(ssh_command: str) -> None:
+        """
+        Do ssh login (e.g. for port forwarding) on the compute node to the login node.
+        This function should only be called on the compute node.
+        Starting from sapp 0.4.5, ssh login is done through python codes to support password and otp login.
+        XXX: Is there a better way to do this? For example, using paramiko.
+        """
+        timeout = 30  # TODO: allow user to control the timeout
+
+        process = pexpect.spawn(ssh_command, timeout=1) # a fake timeout to avoid blocking
+        expect_list = [
+            "Verification code: ",
+            "password: ",
+            pexpect.EOF,
+            pexpect.TIMEOUT,
+        ]
+
+        while True:
+            i = process.expect(expect_list)
+            if i == 0:
+                # try to get the verification code through secret key
+                secret_key = None
+
+                ## 1. find the secret key from sapp config
+                if not secret_key:
+                    database = Database()
+                    key = database.config.get("otp_secret", "")
+                    if isinstance(key, str) and key.strip() != "":
+                        secret_key = key.strip()
+
+                ## 2. find the secret key from .google_authenticator
+                if not secret_key:
+                    path_to_totp = Path("~/.google_authenticator").expanduser()
+                    if path_to_totp.is_file():
+                        with open(path_to_totp, 'r') as f:
+                            # the first line is the secret key
+                            secret_key = f.readline().strip()
+
+                if not secret_key:
+                    raise ValueError("SSH port forwarding requires a verification code. Please set up the secret key in the general settings of SAPP.")
+                
+                # generate the verification code
+                totp = pyotp.TOTP(secret_key)
+
+                # do not respond too fast
+                time.sleep(0.1)
+                process.sendline(str(totp.now()))
+
+            elif i == 1:
+                # try to get the password
+                password = None
+
+                ## 1. find the password from sapp config
+                if not password:
+                    database = Database()
+                    key = database.config.get("passwd", "")
+                    if isinstance(key, str) and key.strip() != "":
+                        password = key.strip()
+
+                if not password:
+                    raise ValueError("SSH port forwarding requires a password. Please set up the password in the general settings of SAPP.")
+                
+                # do not respond too fast
+                time.sleep(0.1)
+                process.sendline(password)
+
+            elif i == 2:
+                break
+
+            elif i == 3:
+                timeout -= 1
+                if timeout <= 0:
+                    process.kill(9)
+                    raise TimeoutError("Timeout when doing ssh port forwarding.")
+        
+        process.wait()
 
 
     @staticmethod
@@ -841,7 +997,7 @@ class Clash:
                     status["jobs"].remove(identifier)
 
                     # double check squeue is not empty
-                    r = os.popen("squeue --noheader")
+                    r = os.popen(f'squeue --noheader {"" if utils.get_slurm_version() < (20,) else "--me "}-o "%.18i %.2t"')
                     result = r.read()
                     r.close()
 
@@ -853,7 +1009,7 @@ class Clash:
                             continue
                         if len(line) > 18 and line[:18].strip() == this_jobid:
                             continue
-                        if len(line) > 55 and line[47:55].strip() == 'CG':
+                        if len(line) >= 21 and line[18:21].strip() == 'CG':
                             continue
                         is_empty = False
 
@@ -865,7 +1021,7 @@ class Clash:
                         # shut down service
                         private_key = exec_folder / 'id_rsa'
                         command = ["ssh", "-o", "StrictHostKeyChecking=no", f"{login_name}@{host_name}", "-i", str(private_key), "kill", "-9", str(status["pid"])]
-                        os.system(shlex.join(command)) # have to wait till finish, which will introduce an overhead.
+                        cls.ssh_login(shlex.join(command)) # have to wait till finish, which will introduce an overhead.
                         
                         with open(logger, "w") as f:
                             data.pop(key)
