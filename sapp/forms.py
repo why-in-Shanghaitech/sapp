@@ -4,8 +4,11 @@
 import npyscreen
 import shlex
 from dataclasses import replace
-from .slurm_config import SlurmConfig, SubmitConfig, Database, utils
+from .slurm_config import SlurmConfig, SubmitConfig
+from .core import Database
+from . import slurm_utils as utils
 from .gpustat import get_card_list
+from slash import Slash
 
 def satisfy(req: dict, avail: dict) -> int:
     """
@@ -576,7 +579,7 @@ class RemoveConfigForm(npyscreen.ActionFormV2):
         return super().while_editing(*args, **kwargs)
 
     def create(self):
-        text = self.add(npyscreen.FixedText, editable=False, value=f"Select the settings to remove from the database.")
+        text = self.add(npyscreen.FixedText, editable=False, value="Select the settings to remove from the database.")
         self.explanation = self.add(npyscreen.FixedText, editable=False, color="STANDOUT", value="Please select with arrow keys.")
         self.add(npyscreen.FixedText, editable=False, value="")
         height = max(2, self.lines-text.height-6)
@@ -596,12 +599,16 @@ class SubmitForm(FormMultiPageAction):
         self.parentApp = keywords["parentApp"]
         self.general_config: dict = self.parentApp.database.config
         self.submit_config = SubmitConfig()
+
+        # obtain slash environments
+        self.slash_envs = ['none'] + sorted(Slash.list().keys())
+
         super().__init__(display_pages, pages_label_color, *args, **keywords)
     
     def on_ok(self):
         # write to config
         self.submit_config.task = self.get_widget("task").value[0]
-        self.submit_config.clash = int(self.get_widget("clash").value) if (self.get_widget("clash").value in (str(i) for i in range(-1, 65536))) else -1
+        self.submit_config.slash = self.slash_envs[self.get_widget("slash").value[0]]
         self.submit_config.time = self.get_widget("time").value
         self.submit_config.jobname = self.get_widget("jobname").value
         self.submit_config.output = self.get_widget("output").value
@@ -612,7 +619,7 @@ class SubmitForm(FormMultiPageAction):
 
         # proceed to exit
         self.parentApp.setNextForm(None)
-    
+
     def on_cancel(self):
         self.parentApp.setNextFormPrevious()
 
@@ -629,10 +636,16 @@ class SubmitForm(FormMultiPageAction):
 
     def create(self):
         super().create("Submit the job to slurm.")
-        
+
+        default_slash_env = self.general_config.get("default_slash", "none")
+        if default_slash_env in self.slash_envs:
+            default_slash_env = self.slash_envs.index(default_slash_env)
+        else:
+            default_slash_env = 0
+
         task = self.auto_add(TitleSelectOne, w_id="task", max_height=4, value=[0], name="Task", values = ["Submit job with srun", "Submit job with sbatch", "Print srun command", "Print sbatch header"], scroll_exit=True, comments="Task to execute. (press arrow keys to show description)", select_exit=True)
         self.auto_add(npyscreen.TitleText, w_id="jobname", name = "Name", value=str(self.general_config.get("default_jobname", "")), comments="(Optional) Job name for slurm. Will appear in squeue.")
-        clash = self.auto_add(npyscreen.TitleText, w_id="clash", name = "Internet", value=str(self.general_config.get("default_clash", "0")), comments="Clash service. -1 for no Internet, 0 for auto port forwarding, otherwise enter a port on the login node.")
+        self.auto_add(TitleSelectOne, w_id="slash", max_height=4, name = "Slash Env", value=[default_slash_env], values=self.slash_envs, scroll_exit=True, select_exit=True, comments="Slash environment name. It will automatically setup the internet/proxy service on the compute node. Choose 'none' to disable.")
         self.auto_add(npyscreen.TitleText, w_id="time", value=str(self.general_config.get("default_time", "0-01:00:00")), name = "Time", comments="Limit on the total run time of the job allocation. E.g. 0-01:00:00")
         output = self.auto_add(npyscreen.TitleFilenameCombo, w_id="output", name = "Output", comments="(Optional) The output filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
         error = self.auto_add(npyscreen.TitleFilenameCombo, w_id="error", name = "Error", comments="(Optional) The stderr filename. use %j for job id, %x for job name and %i for timestamp. You may want to leave it blank for srun.")
@@ -654,12 +667,6 @@ class SubmitForm(FormMultiPageAction):
                 error.value = None
                 output.update()
                 error.update()
-            if task.value and task.value[0] in (1, 3) and clash.value == "0":
-                clash.value = "-1"
-                clash.update()
-            elif task.value and task.value[0] in (0, 2) and clash.value == "-1":
-                clash.value = "0"
-                clash.update()
             
         task.when_value_edited = when_value_edited
 
@@ -677,24 +684,25 @@ class GeneralConfigForm(FormMultiPageAction):
     def __init__(self, display_pages=True, pages_label_color='NORMAL', *args, **keywords):
         self.parentApp = keywords["parentApp"]
         self.general_config: dict = self.parentApp.database.config
+
+        # obtain slash environments
+        self.slash_envs = ['none'] + sorted(Slash.list().keys())
+
         super().__init__(display_pages, pages_label_color, *args, **keywords)
-    
+
     def on_ok(self):
         # write to config
         self.general_config["log_space"] = int(self.get_widget("log_space").value)
         self.general_config["gpu"] = self.get_widget("gpu").value == [1]
         self.general_config["cache"] = self.get_widget("cache").value == [0]
         self.general_config["default_jobname"] = self.get_widget("default_jobname").value
-        self.general_config["default_clash"] = self.get_widget("default_clash").value
+        self.general_config["default_slash"] = self.slash_envs[self.get_widget("default_slash").value[0]]
         self.general_config["default_time"] = self.get_widget("default_time").value
         self.general_config["default_mail_user"] = self.get_widget("default_mail_user").value
-        self.general_config["otp_secret"] = self.get_widget("otp_secret").value
-        self.general_config["passwd"] = self.get_widget("passwd").value
-        self.general_config["clash_config_file"] = self.get_widget("clash_config_file").value
 
         # proceed to exit
         self.parentApp.setNextForm(None)
-    
+
     def on_cancel(self):
         form = self.parentApp.getForm('MAIN')
         form.field.value = None
@@ -703,18 +711,19 @@ class GeneralConfigForm(FormMultiPageAction):
     def create(self):
         super().create("General config for SAPP.")
 
+        default_slash_env = self.general_config.get("default_slash", "none")
+        if default_slash_env in self.slash_envs:
+            default_slash_env = self.slash_envs.index(default_slash_env)
+        else:
+            default_slash_env = 0
+
         self.auto_add(npyscreen.TitleText, w_id="log_space", name = "Log Space", value=str(self.general_config.get("log_space", 200)), comments="Number of logs to keep. By default at ~/.config/sapp. Too small value may lead to task failure. 0 for unlimited.")
         self.auto_add(TitleSelectOne, w_id="gpu", max_height=2, value=[1 if self.general_config.get("gpu", False) else 0], name="GRES", values = ["Submit using --gres=gpu:<type>:<num>", "Submit using --gpus=<type>:<num>"], scroll_exit=True, comments="How to specify the gpu requirement.", select_exit=True)
         self.auto_add(TitleSelectOne, w_id="cache", max_height=2, value=[0 if self.general_config.get("cache", True) else 1], name="Cache", values = ["Cache files in the commands and use independent environment", "Do not cache and submit the file when job is allocated"], scroll_exit=True, comments="Whether to cache the files. This allows you change the files right after submission, no need to wait for allocation.", select_exit=True)
         self.auto_add(npyscreen.TitleText, w_id="default_jobname", name = "Default Name", value=str(self.general_config.get("default_jobname", "")), comments="The default value of job name to appear during sapp job submission.")
-        self.auto_add(npyscreen.TitleText, w_id="default_clash", name = "Default Net", value=str(self.general_config.get("default_clash", "0")), comments="The default value of Clash service to appear during sapp job submission.")
+        self.auto_add(TitleSelectOne, w_id="default_slash", max_height=4, name = "Default Slash", value=[default_slash_env], values=self.slash_envs, scroll_exit=True, select_exit=True, comments="The default environment of the slash service to launch. none for no slash service.")
         self.auto_add(npyscreen.TitleText, w_id="default_time", name = "Default Time", value=str(self.general_config.get("default_time", "0-01:00:00")), comments="The default value of wall time to appear during sapp job submission.")
         self.auto_add(npyscreen.TitleText, w_id="default_mail_user", name = "Default Email", value=str(self.general_config.get("default_mail_user", "")), comments="The default value of mail user to appear during sapp job submission. If empty, slurm will use the email of the current account.")
-
-        self.auto_add(npyscreen.TitleText, w_id="otp_secret", name = "OTP Secret", value=str(self.general_config.get("otp_secret", "")), comments="The secret key for one-time password. Only required if two-factor authentication is enabled. Usually stored in ~/.google_authenticator. Example: 'HDE2Z4T6HDE2Z4T6'.")
-        self.auto_add(npyscreen.TitleText, w_id="passwd", name = "Password", value=str(self.general_config.get("passwd", "")), comments="The password for the current account for SSH login. Only required if the admin does not allow passwordless login.")
-
-        self.auto_add(npyscreen.TitleFilenameCombo, w_id="clash_config_file", name = "Clash Config", value=self.general_config.get("clash_config_file", None), comments="The path to the clash config (.yaml) file that you want sapp to use by default (when setting Internet as 0).")
 
     def pre_edit_loop(self):
         super().pre_edit_loop()
@@ -771,6 +780,6 @@ class SlurmApplication(npyscreen.NPSAppManaged):
         elif menu == 7:
             self.database.config = self.getForm('general_config').general_config
             self.database.dump()
-            print(f"Successfully updated SAPP general config.")
+            print("Successfully updated SAPP general config.")
         elif menu == 8:
             exit(0)
