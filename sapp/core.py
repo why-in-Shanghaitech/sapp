@@ -230,7 +230,7 @@ class Database:
 
                     # init clash
                     slash = Slash(env_name=config.slash)
-                    jobname = f"__sapp_{self.identifier}__"
+                    jobname = f"__sapp_{os.getpid()}_{self.identifier}__"
                     service = slash.launch(jobname)
                     port = service.port
 
