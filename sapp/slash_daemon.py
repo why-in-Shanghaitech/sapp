@@ -1,13 +1,15 @@
 # Copyright (c) Haoyi Wu.
 # Licensed under the MIT license.
 
-from typing import List
 import os
-import sys
 import re
 import subprocess
+import sys
 from pathlib import Path
+from typing import List
+
 from slash.daemon import Daemon
+
 
 class SlurmDaemon(Daemon):
     """

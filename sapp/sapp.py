@@ -3,8 +3,10 @@
 # Copyright (c) Haoyi Wu.
 # Licensed under the MIT license.
 
-from .forms import SlurmApplication
 import sys
+
+from .forms import SlurmApplication
+
 
 def main():
     sapp = SlurmApplication(sys.argv[1:])

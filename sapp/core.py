@@ -1,20 +1,22 @@
 # Copyright (c) Haoyi Wu.
 # Licensed under the MIT license.
 
-from typing import List
-from pathlib import Path
+import json
+import os
+import re
 import shlex
 import shutil
-import os
-import json
-from datetime import datetime
-import warnings
 import socket
 import subprocess
-import re
+import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import List
+
+from slash import Slash
+
 from . import slurm_utils as utils
 from .slurm_config import SlurmConfig, SubmitConfig
-from slash import Slash
 
 
 class Database:
@@ -27,7 +29,7 @@ class Database:
         self.identifier = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
         self.load()
-    
+
     def add(self, config: SlurmConfig):
         self.settings.append(config)
 
@@ -113,15 +115,15 @@ class Database:
                     # copy to SAPP space
                     try:
                         arg = shutil.copy(arg, shell_folder)
-                    except IOError as e:
+                    except IOError:
                         warnings.warn(f"Fails to copy files in command line: {arg}. You might need to keep this file untouched till the job starts running.", UserWarning)
-                    
+
                 _command.append(arg)
-            
+
             # env vars for python modules
             os.environ['PYTHONPATH'] = os.environ['PATH'] + ':' + str(os.getcwd())
             return _command
-        
+
         # if the user does not want to cache the files, resolve_files will do nothing
         if not self.config.get("cache", True):
             resolve_files = lambda x: x
@@ -132,7 +134,7 @@ class Database:
 
             if config.task == 0:
 
-                # get_service may block the process, resolve file first
+                # slash may block the process, resolve file first
                 resolved_command = resolve_files(command)
 
                 # create folder for this job
@@ -158,7 +160,7 @@ class Database:
                         print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
                         print(f'hostname > {shlex.join([hostname_path])}', file = f)
                         print(shlex.join(resolved_command), file = f)
-                    
+
                     # set env vars for tqdm
                     utils.set_screen_shape()
 
@@ -181,7 +183,7 @@ class Database:
                             print(f'echo $SLURM_JOB_ID > {shlex.join([jobid_path])}', file = f)
                             print(f'hostname > {shlex.join([hostname_path])}', file = f)
                             print(shlex.join(resolved_command), file = f)
-                        
+
                         # set env vars for tqdm
                         utils.set_screen_shape()
 
@@ -192,18 +194,18 @@ class Database:
                         # https://docs.python.org/3/library/subprocess.html#replacing-os-system
                         args += ["bash", str(shell_path)]
                         os.system(shlex.join(args))
-                
+
             elif config.task == 2:
                 args += command
                 print(" ".join(args))
-        
+
         elif config.task in (1, 3): # execute sbatch
             args = utils.get_command(config, tp = "sbatch", identifier=self.identifier, general_config=self.config)
             args += [""]
 
             if config.task == 1:
 
-                # get_service may block the process, resolve file first
+                # slash may block the process, resolve file first
                 resolved_command = resolve_files(command)
 
                 # create folder for this job
@@ -275,7 +277,7 @@ class Database:
                     # if failed, stop the slash service
                     else:
                         slash.stop(jobname)
-                
+
             elif config.task == 3:
                 args += [shlex.join(command)]
                 print("\n".join(args))

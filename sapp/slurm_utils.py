@@ -2,10 +2,11 @@
 # Licensed under the MIT license.
 
 import os
-import sys
 import shlex
 import subprocess
+import sys
 from typing import List, Tuple, Union
+
 from .slurm_config import SlurmConfig, SubmitConfig
 
 
@@ -54,7 +55,7 @@ def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identi
             args += [f"{gpu_argname}{slurm_config.gpu_type}:{slurm_config.num_gpus}"]
         args += ["-c", str(slurm_config.cpus_per_task)]
         if slurm_config.mem: args += ["--mem", slurm_config.mem]
-        args += shlex.split(slurm_config.other)
+        if slurm_config.other: args += shlex.split(slurm_config.other)
 
         if isinstance(config, SubmitConfig):
             args += ["-t", config.time]
@@ -87,7 +88,7 @@ def get_command(config: Union[SlurmConfig, SubmitConfig], tp: str = None, identi
             if config.jobname: args += [f"#SBATCH -J {config.jobname}"]
             if config.mail_type: args += [f"#SBATCH --mail-type {','.join(config.mail_type)}"]
             if config.mail_user: args += [f"#SBATCH --mail-user {config.mail_user}"]
-    
+
     return args
 
 def set_screen_shape():
@@ -114,7 +115,7 @@ def set_screen_shape():
                     return None, None
 
     cols, rows = _screen_shape_linux(sys.stderr)
-    
+
     # Do not overwrite user environment
     if isinstance(cols, int):
         os.environ.setdefault("COLUMNS", str(cols + 1))

@@ -1,9 +1,10 @@
 # Copyright (c) Haoyi Wu.
 # Licensed under the MIT license.
 
-from collections import defaultdict
-import subprocess
 import re
+import subprocess
+from collections import defaultdict
+
 
 def run_cammand(cmd, retry = 1):
     for _ in range(retry):
@@ -17,7 +18,7 @@ def parse_gres_line(line):
     # filter out empty lines
     if line.strip() == '':
         return None
-    
+
     # parse the line
     # XXX: this is not an elegent solution (cannot cover edge cases). it might
     #      be better to turn to 3rd party python slurm packages.
@@ -116,7 +117,7 @@ def get_card_list():
                 "cpu": cpu_avail,
                 "mem": mem_avail
             })
-    
+
     return resources
 
 if __name__ == '__main__':
