@@ -122,15 +122,3 @@ def set_screen_shape():
 
     if isinstance(rows, int):
         os.environ.setdefault("LINES", str(rows + 1))
-
-def get_slurm_version() -> Tuple[int, int, int]:
-    """Get the version of slurm installed."""
-    r = os.popen("sinfo --version")
-    version = r.read().strip()
-    r.close()
-    return tuple(map(int, version.split()[1].split('.')))
-
-def is_slurm_available() -> bool:
-    """Check if slurm is available."""
-    process = subprocess.run(["which", "sinfo"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return process.returncode == 0

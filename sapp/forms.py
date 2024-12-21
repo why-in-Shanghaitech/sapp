@@ -8,9 +8,9 @@ import npyscreen
 from slash import Slash
 
 from . import utils as utils
+from .config import SlurmConfig, SubmitConfig
 from .core import Database
 from .gpustat import get_card_list
-from .config import SlurmConfig, SubmitConfig
 
 
 def satisfy(req: dict, avail: dict) -> int:

@@ -6,13 +6,6 @@ import subprocess
 from collections import defaultdict
 
 
-def run_cammand(cmd, retry = 1):
-    for _ in range(retry):
-        c = subprocess.run(cmd, stdout=subprocess.PIPE)
-        if c.returncode == 0:
-            return c.stdout.decode('utf-8')
-    raise RuntimeError("cammand fails to execute: {}".format(cmd if isinstance(cmd, str) else ' '.join(cmd)))
-
 def parse_gres_line(line):
     """Parse the gresused line."""
     # filter out empty lines
@@ -104,8 +97,13 @@ def get_card_list():
         }
     }
     """
-    response = run_cammand(['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.15,AllocMem:.15,Memory:.15,PartitionName:.50', '--noheader'])
+    cmd = ['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.15,AllocMem:.15,Memory:.15,PartitionName:.50', '--noheader']
+    result = subprocess.run(cmd, stdout=subprocess.PIPE)
 
+    if result.returncode != 0:
+        raise RuntimeError("sinfo fails to execute. Please check if slurm is available.")
+
+    response = result.stdout.decode('utf-8')
     resources = defaultdict(dict)
     for line in response.split('\n'):
         parse = parse_gres_line(line)
@@ -119,7 +117,3 @@ def get_card_list():
             })
 
     return resources
-
-if __name__ == '__main__':
-    from pprint import pprint
-    pprint(get_card_list())
