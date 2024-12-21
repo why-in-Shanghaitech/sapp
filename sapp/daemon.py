@@ -11,11 +11,11 @@ from typing import List
 from slash.daemon import Daemon
 
 
-class SlurmDaemon(Daemon):
+class SappDaemon(Daemon):
     """
-    The slurm daemon that manages the jobs based on the slurm job id.
+    The sapp daemon that manages the jobs based on the sapp identifier, which maps to a unique slurm job id.
     """
-    name = 'slurm'
+    name = 'sapp'
 
     def launch_command(self) -> List[str]:
         """
@@ -24,7 +24,7 @@ class SlurmDaemon(Daemon):
         return [
             sys.executable, # the python interpreter
             "-c",
-            "from sapp.slash_daemon import SlurmDaemon; SlurmDaemon().loop({})".format(
+            "from sapp.daemon import SappDaemon; SappDaemon().loop({})".format(
                 os.getpid()
             ),
         ]

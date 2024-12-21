@@ -15,8 +15,8 @@ from typing import List
 
 from slash import Slash
 
-from . import slurm_utils as utils
-from .slurm_config import SlurmConfig, SubmitConfig
+from . import utils as utils
+from .config import SlurmConfig, SubmitConfig
 
 
 class Database:

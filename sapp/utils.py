@@ -7,7 +7,7 @@ import subprocess
 import sys
 from typing import List, Tuple, Union
 
-from .slurm_config import SlurmConfig, SubmitConfig
+from .config import SlurmConfig, SubmitConfig
 
 
 def resolve_identifier(s: str, identifier: str = None):

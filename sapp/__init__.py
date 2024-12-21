@@ -3,8 +3,8 @@
 
 from .sapp import main, spython, spython3
 
-# register the SlurmDaemon
-from .slash_daemon import SlurmDaemon
+# register the SappDaemon
+from .daemon import SappDaemon
 from slash import Slash
-Slash.daemons.append(SlurmDaemon)
-del Slash, SlurmDaemon
+Slash.daemons.append(SappDaemon)
+del Slash, SappDaemon
