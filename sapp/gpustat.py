@@ -4,12 +4,13 @@
 import re
 import subprocess
 from collections import defaultdict
+from functools import partial
 
 
 def parse_gres_line(line):
     """Parse the gresused line."""
     # filter out empty lines
-    if line.strip() == '':
+    if line.strip() == "":
         return None
 
     # parse the line
@@ -20,18 +21,18 @@ def parse_gres_line(line):
     gres_used = line[40:90].strip()
     nodelist = line[90:120].strip()
     cpus = line[120:140].strip()
-    free_mem = line[140:155].strip()
+    # free_mem = line[140:155].strip()
     alloc_mem = line[155:170].strip()
     total_mem = line[170:185].strip()
     partition = line[185:].strip()
 
     # we do not consider drain nodes
-    if status not in ['idle', 'mix', 'alloc']:
+    if status not in ["idle", "mix", "alloc"]:
         return None
 
     # regex from https://github.com/itzsimpl/prometheus-slurm-exporter/blob/64535e24c61ea4d44795571d054c268b1ca69a35/gpus.go#L73
     # might fail when multiple types of gpus appear on the same node
-    pattern = r'gpu:(\(null\)|[^:(]*):?([0-9]+)(\([^)]*\))?'
+    pattern = r"gpu:(\(null\)|[^:(]*):?([0-9]+)(\([^)]*\))?"
     gres_match = re.match(pattern, gres)
     gres_used_match = re.match(pattern, gres_used)
 
@@ -45,18 +46,19 @@ def parse_gres_line(line):
     gpu_avail = gpu_total - gpu_used
 
     # the gpu type is not specified
-    if gpu_type == '(null)' or gpu_type == '':
-        gpu_type = 'Unknown GPU Type'
+    if gpu_type == "(null)" or gpu_type == "":
+        gpu_type = "Unknown GPU Type"
 
     # rule out invalid cpu info
-    if cpus.count('/') != 3:
+    if cpus.count("/") != 3:
         return None
-    cpu_avail = int(cpus.split('/')[1])
+    cpu_avail = int(cpus.split("/")[1])
 
     # XXX: I am not sure if the memory that is available to be allocated could be calculated in this way.
     mem_avail = int(total_mem) - int(alloc_mem)
 
     return gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail, partition
+
 
 def get_card_list():
     """
@@ -97,23 +99,30 @@ def get_card_list():
         }
     }
     """
-    cmd = ['sinfo', '-N', '-O', 'StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.15,AllocMem:.15,Memory:.15,PartitionName:.50', '--noheader']
+    cmd = [
+        "sinfo",
+        "-N",
+        "-O",
+        "StateCompact:.10,Gres:.30,GresUsed:.50,NodeList:.30,CPUsState:.20,FreeMem:.15,AllocMem:.15,Memory:.15,PartitionName:.50",
+        "--noheader",
+    ]
     result = subprocess.run(cmd, stdout=subprocess.PIPE)
 
     if result.returncode != 0:
         raise RuntimeError("sinfo fails to execute. Please check if slurm is available.")
 
-    response = result.stdout.decode('utf-8')
-    resources = defaultdict(dict)
-    for line in response.split('\n'):
+    response = result.stdout.decode("utf-8")
+    resources = defaultdict(partial(defaultdict, list))
+    for line in response.split("\n"):
         parse = parse_gres_line(line)
-        if parse is not None:
-            gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail, partition = parse
-            resources[partition].setdefault(gpu_type, []).append({
-                "nodelist": nodelist,
-                "gpu": gpu_avail,
-                "cpu": cpu_avail,
-                "mem": mem_avail
-            })
+
+        # skip invalid lines
+        if parse is None:
+            continue
+
+        gpu_type, nodelist, gpu_avail, cpu_avail, mem_avail, partition = parse
+        resources[partition][gpu_type].append(
+            {"nodelist": nodelist, "gpu": gpu_avail, "cpu": cpu_avail, "mem": mem_avail}
+        )
 
     return resources

@@ -14,14 +14,12 @@ name = "sapp"
 version = "v0.5.0.dev1"
 dependencies = [
     'npyscreen>=4.10.5',
-    'requests',
-    'tqdm',
-    'slash @ git+https://github.com/why-in-Shanghaitech/slash.git'
+    'slash @ git+https://github.com/why-in-Shanghaitech/slash.git',
 ]
 requires-python = ">=3.8"
 description = "Command helper for slurm system. Act as if you are on compute node."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3 :: Only",
@@ -46,7 +44,7 @@ line-length = 119
 
 [tool.ruff.lint]
 # Never enforce `E501` (line length violations).
-ignore = ["C901", "E501", "E741", "F402", "F823" ]
+ignore = ["C901", "E501", "E741", "F402", "F823"]
 select = ["C", "E", "F", "I", "W"]
 
 # Ignore import violations in all `__init__.py` files.

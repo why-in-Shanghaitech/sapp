@@ -15,18 +15,17 @@ class SappDaemon(Daemon):
     """
     The sapp daemon that manages the jobs based on the sapp identifier, which maps to a unique slurm job id.
     """
-    name = 'sapp'
+
+    name = "sapp"
 
     def launch_command(self) -> List[str]:
         """
         Get the command to launch the daemon.
         """
         return [
-            sys.executable, # the python interpreter
+            sys.executable,  # the python interpreter
             "-c",
-            "from sapp.daemon import SappDaemon; SappDaemon().loop({})".format(
-                os.getpid()
-            ),
+            "from sapp.daemon import SappDaemon; SappDaemon().loop({})".format(os.getpid()),
         ]
 
     def getid(self, job: str) -> re.Match[str]:
@@ -41,7 +40,7 @@ class SappDaemon(Daemon):
         Validate the existence of a job.
         """
         # if the process is alive, do not check the job
-        if (Path('/proc') / match.group("pid")).exists():
+        if (Path("/proc") / match.group("pid")).exists():
             return True
 
         # find the job id by identifier
@@ -56,5 +55,7 @@ class SappDaemon(Daemon):
             jobid = f.read().strip()
 
         # check the job status
-        proc = subprocess.run(["squeue", "-j", str(jobid), "-O", "state", "--nohead"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.run(
+            ["squeue", "-j", str(jobid), "-O", "state", "--nohead"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         return proc.returncode == 0 and proc.stdout.decode().strip()
