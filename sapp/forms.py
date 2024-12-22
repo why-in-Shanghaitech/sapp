@@ -7,7 +7,7 @@ from dataclasses import replace
 import npyscreen
 from slash import Slash
 
-from . import utils as utils
+from . import utils
 from .config import SlurmConfig, SubmitConfig
 from .core import Database
 from .gpustat import get_card_list
