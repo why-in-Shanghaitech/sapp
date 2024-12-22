@@ -653,11 +653,10 @@ class SelectConfigForm(npyscreen.ActionFormV2):
         self.parentApp.setNextFormPrevious()
 
     def adjust_widgets(self):
-        if self._escape == True:
-            self._escape = False
-        else:
+        if not self._escape:
             self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
             self.explanation.update()
+        self._escape = False
         return super().adjust_widgets()
 
     def while_editing(self, *args, **kwargs):
@@ -763,11 +762,10 @@ class EditRunConfigForm(npyscreen.ActionFormV2):
         self.parentApp.setNextFormPrevious()
 
     def adjust_widgets(self):
-        if self._escape == True:
-            self._escape = False
-        else:
+        if not self._escape:
             self.explanation.value = self.options[self.field.entry_widget.cursor_line][1]
             self.explanation.update()
+        self._escape = False
         return super().adjust_widgets()
 
     def while_editing(self, *args, **kwargs):
