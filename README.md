@@ -26,10 +26,13 @@ By default, sapp will do port forwarding for you. You will be able to use the In
 
 ### Slash
 
-`sapp` now uses [slash](https://github.com/why-in-Shanghaitech/slash) to provide Internet service. You may select the preferred slash service when submitting the job. If you do not want to use slash, just select `none`.
+`sapp` now uses [slash](https://github.com/why-in-Shanghaitech/slash) to provide Internet service. You may select the preferred slash environment when submitting the job.
+- If you just want to use the Internet environment on the login node, select the built-in environment `base`.
+- You may also create your own environment with a subscription link, then select it when submitting the job.
+- If you do not want to use slash, just select `none`.
 
 ```bash
-# create an slash environment with a subscription link
+# create an slash environment with a subscription link (optional)
 # e.g. https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub
 slash create -n myenv -f <your_subscription>
 
