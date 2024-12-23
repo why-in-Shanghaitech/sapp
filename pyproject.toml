@@ -1,0 +1,69 @@
+# Copyright (c) Haoyi Wu.
+# Licensed under the MIT license.
+
+## Configuration for the `setuptools` tool.
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sapp"]
+
+[project]
+name = "sapp"
+version = "v0.5.0"
+dependencies = [
+    'npyscreen>=4.10.5',
+    'slash @ git+https://github.com/why-in-Shanghaitech/slash.git@v0.0.1',
+]
+requires-python = ">=3.8"
+description = "Command helper for slurm system. Act as if you are on compute node."
+readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: Linux",
+]
+
+[project.urls]
+Homepage = "https://github.com/why-in-Shanghaitech/sapp"
+Documentation = "https://github.com/why-in-Shanghaitech/sapp/blob/master/README.md"
+Repository = "https://github.com/why-in-Shanghaitech/sapp.git"
+"Bug Tracker" = "https://github.com/why-in-Shanghaitech/sapp/issues"
+
+[project.scripts]
+sapp = "sapp:main"
+spython = "sapp:spython"
+spython3 = "sapp:spython3"
+
+
+## Configuration for the `ruff` tool.
+[tool.ruff]
+line-length = 119
+
+[tool.ruff.lint]
+# Never enforce `E501` (line length violations).
+ignore = ["C901", "E501", "E741", "F402", "F823"]
+select = ["C", "E", "F", "I", "W"]
+
+# Ignore import violations in all `__init__.py` files.
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["E402", "F401", "F403", "F811"]
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+known-first-party = ["transformers"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"

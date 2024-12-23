@@ -22,19 +22,23 @@ If you want to execute commands other that `python`, just add `sapp` in front of
     <img src="imgs/demo02.gif">
 </div>
 
-By default, sapp will do port forwarding for you. You will be able to use the Internet on the compute node as if you are on your local machine.
+To use the Internet, please select the `base` environment of slash instead of `none`. You will be able to use the Internet on the compute node as if you are on your local machine.
 
-### Clash
+### Slash
 
-`sapp` has a built-in clash client. Use command `clash` to set up the service, or add `-b` to run in the background. The usage is the same as the [official clash client](https://a76yyyy.github.io/clash/).
+`sapp` now uses [slash](https://github.com/why-in-Shanghaitech/slash) to provide Internet service. You may select the preferred slash environment when submitting the job.
+- If you just want to use the Internet environment on the login node, select the built-in environment `base`.
+- You may also create your own environment with a subscription link, then select it when submitting the job.
+- If you do not want to use slash, just select `none`.
 
-With the help of clash, you may connect to any websites on the compute node. Just set up a clash service and fill in the port number in your sapp submission form.
+```bash
+# create an slash environment with a subscription link (optional)
+# e.g. https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub
+slash create -n myenv -f <your_subscription>
 
-<div align=center>
-    <img src="imgs/demo03.gif">
-</div>
-
-You may also use clash without sapp.
+# submit a job, choosing slash=myenv
+sapp wget huggingface.co
+```
 
 ## Install
 
@@ -53,12 +57,11 @@ pip uninstall sapp
  - Free yourself from long commands and slurm settings. Personally, I do not like typing a long command or executing a shell script with no interactive console.
  - Beautiful `tqdm` progress bar for `srun` interactive jobs.
  - Sapp allows you to run `srun` and `sbatch` without worrying about file changes. It will memorize the file you submit, so feel free to change the scripts or config files after submitting the job, even if it does not start running yet.
- - Sapp could do auto port forwarding -- enjoy the Internet on the compute node!
- - Sapp will set up clash for you. Use command `clash` to run a clash service.
+ - Sapp could automatically setup the slash service -- enjoy the Internet on the compute node!
 
 ## How it works
 
  - The GPU status query is based on the command `sinfo`.
- - The Internet service is based on clash and ssh port forwarding.
+ - The Internet service is based on slash.
 
 
