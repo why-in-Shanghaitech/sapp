@@ -22,7 +22,7 @@ If you want to execute commands other that `python`, just add `sapp` in front of
     <img src="imgs/demo02.gif">
 </div>
 
-By default, sapp will do port forwarding for you. You will be able to use the Internet on the compute node as if you are on your local machine.
+To use the Internet, please select the `base` environment of slash instead of `none`. You will be able to use the Internet on the compute node as if you are on your local machine.
 
 ### Slash
 
