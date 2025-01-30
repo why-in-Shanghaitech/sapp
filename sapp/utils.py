@@ -218,17 +218,17 @@ def get_ssh_command(
 
     # if not use pexpect, return the command directly
     if not use_pexpect:
-        if otp_secret is not None:
+        if otp_secret:
             warnings.warn("You have provided the otp_secret, but not using pexpect to handle the login. The ssh port forwarding will ignore your otp secret.")
-        if password is not None:
+        if password:
             warnings.warn("You have provided the password, but not using pexpect to handle the login. The ssh port forwarding will ignore your password.")
         return ssh_command
 
     # manually set the otp_secret and password
     kwargs = ""
-    if otp_secret is not None:
+    if otp_secret:
         kwargs += f', otp_secret="{otp_secret}"'
-    if password is not None:
+    if password:
         kwargs += f', password="{password}"'
 
     # build the command
@@ -258,14 +258,14 @@ def ssh_login_with_pexpect(ssh_command: str, otp_secret: str = None, password: s
         if i == 0:
             # try to get the verification code through secret key
             # if not provided, find the secret key from .google_authenticator
-            if otp_secret is None:
+            if not otp_secret:
                 path_to_totp = Path("~/.google_authenticator").expanduser()
                 if path_to_totp.is_file():
                     with open(path_to_totp, 'r') as f:
                         # the first line is the secret key
                         otp_secret = f.readline().strip()
 
-            if otp_secret is None:
+            if not otp_secret:
                 raise ValueError("SSH port forwarding requires a verification code. Please set up the secret key in the general settings of SAPP.")
 
             # generate the verification code
@@ -277,7 +277,7 @@ def ssh_login_with_pexpect(ssh_command: str, otp_secret: str = None, password: s
 
         elif i == 1:
             # try to get the password
-            if password is None:
+            if not password:
                 raise ValueError("SSH port forwarding requires a password. Please set up the password in the general settings of SAPP.")
 
             # do not respond too fast
