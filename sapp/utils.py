@@ -174,6 +174,28 @@ def resolve_files(command: List[str], shell_folder: Path):
     return _command
 
 
+def guess_ssh_port() -> int:
+    """
+    Guess the ssh port. This function is used to guess the ssh port on the login node.
+    """
+    # default ssh port
+    ssh_port = 22
+
+    # try to read the ssh port from the sshd_config
+    try:
+        with open("/etc/ssh/sshd_config", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("#"):
+                    continue
+                if "Port" in line:
+                    ssh_port = int(line.split()[1])
+                    break
+    except (FileNotFoundError, PermissionError):
+        pass
+
+    return ssh_port
+
 def prepare_ssh_env(path: Path) -> Path:
     """
     Prepare password free login with ssh. This is necessary for the compute node to do port forwarding.
@@ -230,8 +252,6 @@ def get_ssh_command(
     tgt_port: int,
     ssh_port: int = 22,
     use_pexpect: bool = False,
-    otp_secret: str = None,
-    password: str = None,
 ) -> List[str]:
     """
     Return the command for the compute node to do port forwarding to the login node.
@@ -243,25 +263,14 @@ def get_ssh_command(
 
     # if not use pexpect, return the command directly
     if not use_pexpect:
-        if otp_secret:
-            warnings.warn("You have provided the otp_secret, but not using pexpect to handle the login. The ssh port forwarding will ignore your otp secret.")
-        if password:
-            warnings.warn("You have provided the password, but not using pexpect to handle the login. The ssh port forwarding will ignore your password.")
         return ssh_command
 
-    # manually set the otp_secret and password
-    kwargs = ""
-    if otp_secret:
-        kwargs += f', otp_secret="{otp_secret}"'
-    if password:
-        kwargs += f', password="{password}"'
-
     # build the command
-    command = ["python", "-c", f'from sapp.utils import ssh_login_with_pexpect; ssh_login_with_pexpect("{shlex.join(ssh_command)}"{kwargs})']
+    command = ["python", "-c", f'from sapp.utils import ssh_login_with_pexpect; ssh_login_with_pexpect("{shlex.join(ssh_command)}")']
 
     return command
 
-def ssh_login_with_pexpect(ssh_command: str, otp_secret: str = None, password: str = None) -> None:
+def ssh_login_with_pexpect(ssh_command: str) -> None:
     """
     Do ssh login (e.g. for port forwarding) on the compute node to the login node.
     This function should only be called on the compute node.
@@ -282,7 +291,17 @@ def ssh_login_with_pexpect(ssh_command: str, otp_secret: str = None, password: s
         i = process.expect(expect_list)
         if i == 0:
             # try to get the verification code through secret key
-            # if not provided, find the secret key from .google_authenticator
+            otp_secret = None
+
+            ## 1. find the secret key from sapp config
+            if not otp_secret:
+                from .core import Database
+                database = Database()
+                key = database.config.get("otp_secret", "")
+                if isinstance(key, str) and key.strip() != "":
+                    otp_secret = key.strip()
+
+            ## 2. find the secret key from .google_authenticator
             if not otp_secret:
                 path_to_totp = Path("~/.google_authenticator").expanduser()
                 if path_to_totp.is_file():
@@ -301,6 +320,17 @@ def ssh_login_with_pexpect(ssh_command: str, otp_secret: str = None, password: s
             process.sendline(str(totp.now()))
 
         elif i == 1:
+            # try to get the password
+            password = None
+
+            ## 1. find the password from sapp config
+            if not password:
+                from .core import Database
+                database = Database()
+                key = database.config.get("passwd", "")
+                if isinstance(key, str) and key.strip() != "":
+                    password = key.strip()
+
             # try to get the password
             if not password:
                 raise ValueError("SSH port forwarding requires a password. Please set up the password in the general settings of SAPP.")

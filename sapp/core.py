@@ -3,12 +3,12 @@
 
 import json
 import os
+import random
 import re
 import shlex
 import shutil
 import socket
 import subprocess
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -137,14 +137,33 @@ class Database:
                 with Slash(env_name=config.slash) as slash:
                     port = slash.service.port
 
+                    # port forward mode
+                    proxy_url = f"http://{host_ip}:{port}"
+                    ssh_command = None
+
+                    if (port_forward_mode := self.config.get("port_forward", 0)) != 0:
+                        tgt_port = random.randint(30000, 40000)
+                        proxy_url = f"http://127.0.0.1:{tgt_port}"
+                        ssh_command = utils.get_ssh_command(
+                            path=self.base_path,
+                            src_port=port,
+                            tgt_port=tgt_port,
+                            ssh_port=self.config.get("ssh_port", utils.guess_ssh_port()),
+                            use_pexpect=port_forward_mode == 1,
+                        )
+
                     # write the shell script
                     with open(shell_path, "w") as f:
                         print("#!/usr/bin/bash", file=f)
                         print("", file=f)
-                        print(f"export http_proxy=http://{host_ip}:{port}", file=f)
-                        print(f"export https_proxy=http://{host_ip}:{port}", file=f)
+                        print(f"export http_proxy={proxy_url}", file=f)
+                        print(f"export https_proxy={proxy_url}", file=f)
                         print(f"echo $SLURM_JOB_ID > {shlex.join([jobid_path])}", file=f)
                         print(f"hostname > {shlex.join([hostname_path])}", file=f)
+
+                        if ssh_command:
+                            print(shlex.join(ssh_command), file = f)
+
                         print(shlex.join(command), file=f)
 
                     # set env vars for tqdm
@@ -191,10 +210,30 @@ class Database:
                 service = slash.launch(jobname)
                 port = service.port
 
-                args += [f"export http_proxy=http://{host_ip}:{port}"]
-                args += [f"export https_proxy=http://{host_ip}:{port}"]
+                # port forward mode
+                proxy_url = f"http://{host_ip}:{port}"
+                ssh_command = None
+
+                if (port_forward_mode := self.config.get("port_forward", 0)) != 0:
+                    tgt_port = random.randint(30000, 40000)
+                    proxy_url = f"http://127.0.0.1:{tgt_port}"
+                    ssh_command = utils.get_ssh_command(
+                        path=self.base_path,
+                        src_port=port,
+                        tgt_port=tgt_port,
+                        ssh_port=self.config.get("ssh_port", utils.guess_ssh_port()),
+                        use_pexpect=port_forward_mode == 1,
+                    )
+
+                # write the shell script
+                args += [f"export http_proxy={proxy_url}"]
+                args += [f"export https_proxy={proxy_url}"]
                 args += [f"echo $SLURM_JOB_ID > {shlex.join([jobid_path])}"]
                 args += [f"hostname > {shlex.join([hostname_path])}"]
+
+                if ssh_command:
+                    args += [shlex.join(ssh_command)]
+
                 args += [shlex.join(command)]
 
             # write the shell script
