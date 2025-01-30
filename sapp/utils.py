@@ -3,8 +3,16 @@
 
 import os
 import shlex
+import socket
 import sys
+import time
+import warnings
+from pathlib import Path
 from typing import List, Union
+
+import pexpect
+import pyotp
+from filelock import SoftFileLock
 
 from .config import SlurmConfig, SubmitConfig
 
@@ -139,3 +147,150 @@ def set_screen_shape():
 
     if isinstance(rows, int):
         os.environ.setdefault("LINES", str(rows + 1))
+
+
+def prepare_ssh_env(path: Path) -> Path:
+    """
+    Prepare password free login with ssh. This is necessary for the compute node to do port forwarding.
+
+    Arguments:
+        path: pathlib.Path
+            The path to the folder where the ssh key pair is expected to be stored.
+
+    Return:
+        private_key: pathlib.Path
+            The path to the private key.
+    """
+    private_key = Path(path) / 'id_rsa'
+    public_key = Path(path) / 'id_rsa.pub'
+    authorized_keys = Path('~/.ssh/authorized_keys').expanduser()
+
+    # add a file lock to avoid race condition
+    with SoftFileLock(private_key.with_suffix('.lock')):
+
+        # check the existence of ssh key pair, and authorized keys
+        if private_key.is_file() and public_key.is_file() and authorized_keys.is_file():
+            with open(public_key, 'r') as f_in, open(authorized_keys, 'r') as f_out:
+                for line in f_out.readlines():
+                    if f_in.readline().strip() in line.strip():
+                        # everything is prepared, exit
+                        return private_key
+
+        # remove existing files
+        private_key.unlink(missing_ok=True)
+        public_key.unlink(missing_ok=True)
+
+        # generate the ssh key pair and write into authorized keys
+        os.system(shlex.join(["ssh-keygen", "-t", "rsa", "-f", str(private_key), "-N", ""]))
+
+        with open(public_key, 'r') as f:
+            public_key_s = f.read()
+
+        ## check if end with newline, if not, add a new line at front
+        if authorized_keys.is_file():
+            with open(authorized_keys, 'r') as f:
+                s = f.read()
+            if s != "" and not s.endswith('\n'):
+                public_key_s = "\n" + public_key_s
+
+        # append to authorized keys
+        with open(authorized_keys, 'a') as f:
+            f.write(public_key_s)
+
+    return private_key
+
+def get_ssh_command(
+    path: Path,
+    src_port: int,
+    tgt_port: int,
+    ssh_port: int = 22,
+    use_pexpect: bool = False,
+    otp_secret: str = None,
+    password: str = None,
+) -> List[str]:
+    """
+    Return the command for the compute node to do port forwarding to the login node.
+    This function should only be called on the login node.
+    """
+    private_key = prepare_ssh_env(path)
+    host_name, login_name = socket.gethostname(), os.getlogin()
+    ssh_command = ["ssh", "-o", "StrictHostKeyChecking=no", "-N", "-f", "-L", f"{tgt_port}:localhost:{src_port}", f"{login_name}@{host_name}", "-p", str(ssh_port), "-i", str(private_key)]
+
+    # if not use pexpect, return the command directly
+    if not use_pexpect:
+        if otp_secret is not None:
+            warnings.warn("You have provided the otp_secret, but not using pexpect to handle the login. The ssh port forwarding will ignore your otp secret.")
+        if password is not None:
+            warnings.warn("You have provided the password, but not using pexpect to handle the login. The ssh port forwarding will ignore your password.")
+        return ssh_command
+
+    # manually set the otp_secret and password
+    kwargs = ""
+    if otp_secret is not None:
+        kwargs += f', otp_secret="{otp_secret}"'
+    if password is not None:
+        kwargs += f', password="{password}"'
+
+    # build the command
+    command = ["python", "-c", f'from sapp.utils import ssh_login_with_pexpect; ssh_login_with_pexpect("{shlex.join(ssh_command)}"{kwargs})']
+
+    return command
+
+def ssh_login_with_pexpect(ssh_command: str, otp_secret: str = None, password: str = None) -> None:
+    """
+    Do ssh login (e.g. for port forwarding) on the compute node to the login node.
+    This function should only be called on the compute node.
+    pexpect is used to handle the password and otp login. However, it is known that pexpect does not work on some clusters. The reason is unknown.
+    XXX: Is there a better way to do this? For example, using pxssh (no support to otp), redssh (direct implmentation of ssh) or paramiko (low level support).
+    """
+    timeout = 30  # TODO: allow user to control the timeout
+
+    process = pexpect.spawn(ssh_command, timeout=1) # a fake timeout to avoid blocking
+    expect_list = [
+        "Verification code: ",
+        "password: ",
+        pexpect.EOF,
+        pexpect.TIMEOUT,
+    ]
+
+    while True:
+        i = process.expect(expect_list)
+        if i == 0:
+            # try to get the verification code through secret key
+            # if not provided, find the secret key from .google_authenticator
+            if otp_secret is None:
+                path_to_totp = Path("~/.google_authenticator").expanduser()
+                if path_to_totp.is_file():
+                    with open(path_to_totp, 'r') as f:
+                        # the first line is the secret key
+                        otp_secret = f.readline().strip()
+
+            if otp_secret is None:
+                raise ValueError("SSH port forwarding requires a verification code. Please set up the secret key in the general settings of SAPP.")
+
+            # generate the verification code
+            totp = pyotp.TOTP(otp_secret)
+
+            # do not respond too fast
+            time.sleep(0.1)
+            process.sendline(str(totp.now()))
+
+        elif i == 1:
+            # try to get the password
+            if password is None:
+                raise ValueError("SSH port forwarding requires a password. Please set up the password in the general settings of SAPP.")
+
+            # do not respond too fast
+            time.sleep(0.1)
+            process.sendline(password)
+
+        elif i == 2:
+            break
+
+        elif i == 3:
+            timeout -= 1
+            if timeout <= 0:
+                process.kill(9)
+                raise TimeoutError("Timeout when doing ssh port forwarding.")
+
+    process.wait()
