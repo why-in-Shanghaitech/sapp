@@ -3,6 +3,7 @@
 
 import os
 import shlex
+import shutil
 import socket
 import sys
 import time
@@ -147,6 +148,30 @@ def set_screen_shape():
 
     if isinstance(rows, int):
         os.environ.setdefault("LINES", str(rows + 1))
+
+
+def resolve_files(command: List[str], shell_folder: Path):
+    """make a copy for all small (<1M) files mentioned in the command."""
+    shell_folder = Path(shell_folder)
+    shell_folder.mkdir(parents=True, exist_ok=True)
+
+    _command = []
+    for arg in command:
+        if os.path.isfile(arg) and os.path.getsize(arg) < 1 * 1024 * 1024:
+            # copy to SAPP space
+            try:
+                arg = shutil.copy(arg, shell_folder)
+            except IOError:
+                warnings.warn(
+                    f"Fails to copy files in command line: {arg}. You might need to keep this file untouched till the job starts running.",
+                    UserWarning,
+                )
+
+        _command.append(arg)
+
+    # env vars for python modules
+    os.environ["PYTHONPATH"] = os.environ["PATH"] + ":" + str(os.getcwd())
+    return _command
 
 
 def prepare_ssh_env(path: Path) -> Path:
