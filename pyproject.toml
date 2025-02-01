@@ -10,14 +10,14 @@ build-backend = "setuptools.build_meta"
 packages = ["sapp"]
 
 [project]
-name = "sapp"
-version = "v0.5.0.dev0"
+name = "sapp-py"
+version = "v0.5.0.dev1"
 dependencies = [
     'npyscreen>=4.10.5',
     'pexpect',
     'pyotp',
     'filelock',
-    'slash @ git+https://github.com/why-in-Shanghaitech/slash.git@v0.0.1',
+    'slash-py',
 ]
 requires-python = ">=3.8"
 description = "Command helper for slurm system. Act as if you are on compute node."
@@ -26,7 +26,7 @@ license = { file = "LICENSE" }
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Programming Language :: Python :: 3 :: Only",
-    "Operating System :: Linux",
+    "Operating System :: POSIX :: Linux",
 ]
 
 [project.urls]
